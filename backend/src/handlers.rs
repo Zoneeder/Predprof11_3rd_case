@@ -1,10 +1,13 @@
 use axum::{
-    extract::{Multipart, Query},
+    extract::{Multipart, Query, State},
     Json,
 };
 use serde_json::{json};
 use std::collections::HashMap;
-use crate::models::*;
+use csv::ReaderBuilder;
+use sqlx::Row;
+use crate::{models::*, AppState, db, logic};
+use crate::db::NewApplicant;
 
 #[derive(serde::Deserialize)]
 pub struct PaginationQuery {
@@ -12,94 +15,163 @@ pub struct PaginationQuery {
     pub limit: Option<usize>,
 }
 
-pub async fn get_applicants(Query(params): Query<PaginationQuery>) -> Json<ApplicantListResponse> {
-    let data = vec![
-        Applicant {
-            id: 101,
-            full_name: "Иванов Иван Иванович".to_string(),
-            agreed: true,
-            total_score: 265,
-            scores: Scores { math: 85, rus: 90, phys: 80, achievements: 10 },
-            current_program: Some("ИВТ".to_string()),
-            priorities: vec!["ПМ".to_string(), "ИВТ".to_string()],
-        },
-        Applicant {
-            id: 102,
-            full_name: "Петрова Анна Сергеевна".to_string(),
-            agreed: false,
-            total_score: 290,
-            scores: Scores { math: 95, rus: 95, phys: 90, achievements: 10 },
-            current_program: None,
-            priorities: vec!["ПМ".to_string()],
-        },
-    ];
+pub async fn get_applicants(
+    State(state): State<AppState>,
+    Query(params): Query<PaginationQuery>,
+) -> Json<ApplicantListResponse> {
+
+    let page = params.page.unwrap_or(1);
+    let limit = params.limit.unwrap_or(50) as i32;
+    let offset = ((page - 1) * (limit as usize)) as i32;
+    let applicants = db::get_applicants(&state.db, limit, offset)
+        .await
+        .unwrap_or_else(|e| {
+            println!("DB Error: {}", e);
+            vec![]
+        });
+
+    let total_items = db::count_applicants(&state.db)
+        .await
+        .unwrap_or(0) as usize;
+
+    let total_pages = (total_items as f64 / limit as f64).ceil() as usize;
 
     Json(ApplicantListResponse {
-        data,
+        data: applicants,
         meta: PaginationMeta {
-            total_items: 1488,
-            current_page: params.page.unwrap_or(1),
-            total_pages: 25,
+            total_items,
+            current_page: page,
+            total_pages,
         },
     })
 }
 
-pub async fn get_stats() -> Json<Vec<ProgramStats>> {
-    let stats = vec![
-        ProgramStats {
-            program_name: "Прикладная математика".to_string(),
-            program_code: "ПМ".to_string(),
-            places_total: 40,
-            places_filled: 40,
-            passing_score: 275,
-            is_shortage: false,
-        },
-        ProgramStats {
-            program_name: "Информационная безопасность".to_string(),
-            program_code: "ИБ".to_string(),
-            places_total: 20,
-            places_filled: 5,
-            passing_score: 0,
-            is_shortage: true,
-        },
-    ];
-    Json(stats)
+pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT program_code, passing_score, places_filled
+        FROM history_stats
+        WHERE record_date = (SELECT MAX(record_date) FROM history_stats)
+        "#
+    )
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    let limits = HashMap::from([
+        ("ПМ", 40), ("ИВТ", 50), ("ИТСС", 30), ("ИБ", 20)
+    ]);
+
+    let mut result = Vec::new();
+
+    for (code, &total) in limits.iter() {
+        let stat_row = rows.iter().find(|r| r.get::<String, _>("program_code") == *code);
+
+        let (filled, score) = match stat_row {
+            Some(row) => (row.get::<i32, _>("places_filled"), row.get::<i32, _>("passing_score")),
+            None => (0, 0),
+        };
+
+        result.push(ProgramStats {
+            program_name: match *code {
+                "ПМ" => "Прикладная математика".to_string(),
+                "ИВТ" => "Информатика и ВТ".to_string(),
+                "ИТСС" => "Связь и телекоммуникации".to_string(),
+                "ИБ" => "Информационная безопасность".to_string(),
+                _ => code.to_string(),
+            },
+            program_code: code.to_string(),
+            places_total: total,
+            places_filled: filled,
+            passing_score: score,
+            is_shortage: filled < total,
+        });
+    }
+
+    Json(result)
 }
 
-pub async fn import_data(mut multipart: Multipart) -> Json<ImportResponse> {
+pub async fn import_data(
+    State(state): State<AppState>,
+    mut multipart: Multipart
+) -> Json<ImportResponse> {
+    let mut stats = ImportStats { processed: 0 };
     while let Some(field) = multipart.next_field().await.unwrap() {
         let name = field.name().unwrap().to_string();
+
         if name == "file" {
-            println!("Получен файл: {:?}", field.file_name());
+            let data = field.bytes().await.unwrap();
+            let mut rdr = ReaderBuilder::new()
+                .delimiter(b',')
+                .from_reader(&data[..]);
+
+            for result in rdr.deserialize() {
+                let record: CsvApplicant = match result {
+                    Ok(r) => r,
+                    Err(e) => {
+                        println!("Ошибка парсинга строки: {}", e);
+                        continue;
+                    }
+                };
+
+                let is_agreed = record.agreed.to_lowercase() == "true" || record.agreed == "1";
+
+                let priorities_vec: Vec<String> = record.priorities
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                let new_applicant = NewApplicant {
+                    external_id: record.id,
+                    full_name: record.name,
+                    score_math: record.math,
+                    score_rus: record.rus,
+                    score_phys: record.phys,
+                    score_achieve: record.achieve,
+                    agreed: is_agreed,
+                    priorities: priorities_vec,
+                };
+                match db::upsert_applicant(&state.db, &new_applicant).await {
+                    Ok(_) => {
+                        stats.processed += 1;
+                    },
+                    Err(e) => println!("Ошибка БД для ID {}: {}", record.id, e),
+                }
+            }
         }
     }
-    // todo убрать в будущем
-    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-
+    let pool_clone = state.db.clone();
+    tokio::spawn(async move {
+        logic::recalculate_admissions(&pool_clone).await;
+    });
+    
     Json(ImportResponse {
         status: "success".to_string(),
-        message: "Data imported and recalculated".to_string(),
-        stats: ImportStats {
-            processed: 1240,
-            added: 15,
-            updated: 100,
-        },
+        message: format!("Processed {} records", stats.processed),
+        stats,
     })
 }
 
-pub async fn get_history() -> Json<HashMap<String, Vec<serde_json::Value>>> {
-    let mut history = HashMap::new();
+pub async fn get_history(State(state): State<AppState>) -> Json<HashMap<String, Vec<serde_json::Value>>> {
+    let rows = sqlx::query(
+        "SELECT program_code, record_date, passing_score FROM history_stats ORDER BY record_date ASC"
+    )
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
 
-    history.insert("ПМ".to_string(), vec![
-        json!({ "date": "2024-07-20", "score": 240 }),
-        json!({ "date": "2024-07-25", "score": 255 }),
-        json!({ "date": "2024-08-01", "score": 275 }),
-    ]);
+    let mut history: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
-    history.insert("ИВТ".to_string(), vec![
-        json!({ "date": "2024-07-20", "score": 210 }),
-        json!({ "date": "2024-08-01", "score": 230 }),
-    ]);
+    for row in rows {
+        let code: String = row.get("program_code");
+        let date: String = row.get("record_date");
+        let score: i32 = row.get("passing_score");
+
+        history.entry(code).or_default().push(json!({
+            "date": date,
+            "score": score
+        }));
+    }
 
     Json(history)
 }

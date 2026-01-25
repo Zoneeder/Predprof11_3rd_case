@@ -1,50 +1,95 @@
+## Запуск из релиза
+Просто запустите `.exe` файл из архива в релизах. Рядом с ним должен лежать файл `.env`.
+
+---
+
 ## Endpoints
 
 Сервер работает на `http://localhost:3000`.
 Все ответы приходят в формате **JSON**.
 
-### 1.Импорт (Import)
-Загрузка CSV файла и пересчет рейтингов.
+### 1. Импорт (Import)
+Загрузка CSV файла и пересчет рейтингов. **Автоматически запускает алгоритм распределения.**
+
 - **URL:** `POST /api/import`
 - **Body:** `Multipart/Form-Data`
-    - `file`: (File) сам файл .csv/.json
-    - `date`: (String) дата списка "2024-08-01"
+  - `file`: (File) файл `.csv`.
+- **Требования к CSV:**
+  Разделитель — запятая. Обязателен заголовок.
+  **Колонки:** `id,name,math,rus,phys,achieve,agreed,priorities`
+  *Пример:*
+  ```csv
+  101,Иванов Иван,80,75,85,5,true,ПМ;ИВТ
+  102,Петрова Анна,90,95,90,10,false,ИВТ
+  ```
+  *(Приоритеты разделяются точкой с запятой `;`)*
 
-### 2.Список абитуриентов (List)
+---
+
+### 2. Список абитуриентов (List)
 Таблица с пагинацией.
+
 - **URL:** `GET /api/applicants`
-- **Params:** `page`, `limit`, `search`, `filter_program`
+- **Params (Query):**
+  - `page`: номер страницы (def: 1)
+  - `limit`: кол-во на странице (def: 50)
 - **Пример ответа:**
 ```json
 {
   "data": [
-    { "id": 1, "full_name": "Иванов И.И.", "total_score": 260, "agreed": true, "current_program": "ИВТ" }
+    {
+      "id": 1,
+      "full_name": "Иванов И.И.",
+      "total_score": 260,
+      "scores": { "math": 80, "rus": 90, "phys": 80, "achievements": 10 },
+      "agreed": true,
+      "current_program": "ИВТ", // null, если не прошел никуда
+      "priorities": ["ПМ", "ИВТ"]
+    }
   ],
-  "meta": { "total_pages": 10 }
+  "meta": {
+    "total_items": 120,
+    "current_page": 1,
+    "total_pages": 3
+  }
 }
 ```
 
-### 3.Статистика (Stats)
+---
+
+### 3. Статистика (Stats)
 Дашборд с проходными баллами.
 - **URL:** `GET /api/statistics`
 - **Пример ответа:**
 ```json
 [
-  { "program_code": "ПМ", "places_total": 40, "places_filled": 40, "passing_score": 275 }
+  {
+    "program_name": "Прикладная математика",
+    "program_code": "ПМ",
+    "places_total": 40,
+    "places_filled": 40,
+    "passing_score": 275,
+    "is_shortage": false
+  }
 ]
 ```
 
-### 4.История (History)
+---
+
+### 4. История (History)
 Данные для графиков изменения баллов.
+
 - **URL:** `GET /api/history`
 - **Пример ответа:**
+  Возвращает объект, где ключ — код направления.
 ```json
 {
-  "ПМ": [{ "date": "2024-08-01", "score": 270 }],
-  "ИВТ": [{ "date": "2024-08-01", "score": 230 }]
+  "ПМ": [
+    { "date": "2024-07-20", "score": 240 },
+    { "date": "2024-08-01", "score": 270 }
+  ],
+  "ИВТ": [
+    { "date": "2024-08-01", "score": 230 }
+  ]
 }
 ```
-
----
-# Тех детали
-Запуск сервера возможен через .exe файл из релизов, иначе API работать не будет.
