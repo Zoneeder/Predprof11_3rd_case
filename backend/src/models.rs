@@ -1,4 +1,4 @@
-use serde::{Serialize};
+use serde::{Deserialize, Serialize};
 #[derive(Serialize)]
 pub struct ApplicantListResponse {
     pub data: Vec<Applicant>,
@@ -50,6 +50,16 @@ pub struct ImportResponse {
 #[derive(Serialize)]
 pub struct ImportStats {
     pub processed: i32,
-    pub added: i32,
-    pub updated: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CsvApplicant {
+    pub id: i32,
+    pub name: String,
+    pub math: i32,
+    pub rus: i32,
+    pub phys: i32,
+    pub achieve: i32,
+    pub agreed: String,
+    pub priorities: String,
 }

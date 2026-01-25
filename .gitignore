@@ -3,6 +3,7 @@
 /backend/**/target/
 Cargo.lock
 **/*.rs.bk
-
 .idea/
 .vscode/
+/backend/data.db
+/backend/.env
