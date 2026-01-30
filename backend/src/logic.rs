@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 use std::collections::{HashMap};
-use chrono::Local;
+// use chrono::Local; // <-- Больше не нужно, если не используем текущую дату по дефолту
 use crate::db;
 
 fn get_program_limits() -> HashMap<String, usize> {
@@ -12,7 +12,8 @@ fn get_program_limits() -> HashMap<String, usize> {
     map
 }
 
-pub async fn recalculate_admissions(pool: &SqlitePool) {
+// Добавили аргумент `date`
+pub async fn recalculate_admissions(pool: &SqlitePool, date: &str) {
     if let Err(e) = db::reset_admission_status(pool).await {
         println!("Ошибка сброса статусов: {}", e);
         return;
@@ -36,11 +37,13 @@ pub async fn recalculate_admissions(pool: &SqlitePool) {
             .then_with(|| b.scores.math.cmp(&a.scores.math))
             .then_with(|| b.scores.rus.cmp(&a.scores.rus))
     });
+    
     let limits = get_program_limits();
     let mut admission_lists: HashMap<String, Vec<i32>> = HashMap::new();
     for key in limits.keys() {
         admission_lists.insert(key.clone(), Vec::new());
     }
+    
     for person in active_applicants {
         for priority in &person.priorities {
             if let Some(limit) = limits.get(priority) {
@@ -53,15 +56,17 @@ pub async fn recalculate_admissions(pool: &SqlitePool) {
             }
         }
     }
-    save_statistics(pool, &limits, &admission_lists).await;
+    // Передаем дату дальше
+    save_statistics(pool, &limits, &admission_lists, date).await;
 }
 
 async fn save_statistics(
     pool: &SqlitePool,
     limits: &HashMap<String, usize>,
-    admission_lists: &HashMap<String, Vec<i32>>
+    admission_lists: &HashMap<String, Vec<i32>>,
+    date: &str // <-- Принимаем дату аргументом
 ) {
-    let today = Local::now().format("%Y-%m-%d").to_string();
+    // let today = Local::now().format("%Y-%m-%d").to_string(); // <-- УБИРАЕМ ЭТО
 
     for (prog_code, admitted_ids) in admission_lists {
         let total_places = limits.get(prog_code).unwrap_or(&0);
@@ -88,7 +93,7 @@ async fn save_statistics(
                 places_filled = excluded.places_filled
             "#
         )
-            .bind(&today)
+            .bind(date) // <-- Используем переданную дату
             .bind(prog_code)
             .bind(passing_score)
             .bind(filled as i32)

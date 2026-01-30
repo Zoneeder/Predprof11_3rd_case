@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import {
   Badge,
+  Button,
   Card,
   Group,
   Loader,
@@ -12,7 +13,9 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { IconFileTypePdf } from "@tabler/icons-react"; // Иконка PDF
 import { useApplicants, useHistory, useStatistics } from "../api/hooks";
+import { getApplicants } from "../api/api"; // Импортируем функцию API напрямую для отчета
 import {
   LineChart,
   Line,
@@ -21,35 +24,39 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  CartesianGrid
 } from "recharts";
+import { generateReport } from "../utils/pdf";
+import { notifications } from "@mantine/notifications";
 
 export function DashboardPage() {
-  // Applicants table state
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const [search, setSearch] = useState("");
+  const [isGeneratingPdf, setGeneratingPdf] = useState(false);
+
+  // Ссылка на DOM-элемент графика для скриншота
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const statsQ = useStatistics();
   const historyQ = useHistory();
   const applicantsQ = useApplicants({ page, limit, search: search || undefined });
 
-  // Top cards: pick some basic derived numbers from stats (or show placeholders if empty)
+  // --- ЛОГИКА ДЛЯ ВЕРХНИХ КАРТОЧЕК ---
   const top = useMemo(() => {
     const rows = statsQ.data ?? [];
     const placesTotal = rows.reduce((s, r) => s + r.places_total, 0);
     const placesFilled = rows.reduce((s, r) => s + r.places_filled, 0);
     const avgPassing =
       rows.length ? Math.round(rows.reduce((s, r) => s + r.passing_score, 0) / rows.length) : 0;
-
     return { placesTotal, placesFilled, avgPassing, programs: rows.length };
   }, [statsQ.data]);
 
-  // History chart: convert { program: [{date,score}]} into recharts format by date
+  // --- ЛОГИКА ДЛЯ ГРАФИКА ---
   const chartData = useMemo(() => {
     const hist = historyQ.data ?? {};
     const allDates = new Set<string>();
     Object.values(hist).forEach((arr) => arr.forEach((p) => allDates.add(p.date)));
-
     const dates = Array.from(allDates).sort();
     return dates.map((d) => {
       const row: any = { date: d };
@@ -60,32 +67,64 @@ export function DashboardPage() {
       return row;
     });
   }, [historyQ.data]);
-
   const programKeys = useMemo(() => Object.keys(historyQ.data ?? {}), [historyQ.data]);
+
+  // --- ФУНКЦИЯ ГЕНЕРАЦИИ ОТЧЕТА ---
+  const handleDownloadReport = async () => {
+    if (!statsQ.data) return;
+    setGeneratingPdf(true);
+    try {
+      // 1. Загружаем полный список студентов для списков зачисления (без пагинации)
+      // В реальном проекте лучше endpoint /api/export, но здесь делаем запрос с большим limit
+      const fullList = await getApplicants({ page: 1, limit: 10000 });
+      
+      // 2. Определяем последнюю дату из графика как "текущую дату данных"
+      const lastDate = chartData.length > 0 ? chartData[chartData.length - 1].date : "2024-08-0X";
+
+      // 3. Генерируем
+      await generateReport({
+        stats: statsQ.data,
+        applicants: fullList.data,
+        chartElement: chartRef.current,
+        date: lastDate,
+      });
+
+      notifications.show({ title: "Отчет готов", message: "Скачивание началось", color: "green" });
+    } catch (e) {
+      console.error(e);
+      notifications.show({ title: "Ошибка", message: "Не удалось создать PDF", color: "red" });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
 
   return (
     <Stack gap="md">
       <Group justify="space-between" align="flex-end">
         <Title order={2}>Dashboard</Title>
-
-        <Group>
-          <TextInput
-            label="Search applicant"
-            placeholder="Иванов..."
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-          />
-          <NumberInput
-            label="Page"
-            min={1}
-            value={page}
-            onChange={(v) => setPage(Number(v || 1))}
-            w={120}
-          />
-        </Group>
+        
+        {/* Кнопка скачивания отчета */}
+        <Button 
+          leftSection={<IconFileTypePdf size={18}/>} 
+          onClick={handleDownloadReport}
+          loading={isGeneratingPdf}
+          disabled={!statsQ.data}
+        >
+          Скачать отчет (PDF)
+        </Button>
       </Group>
 
-      {/* Top cards (upper part) */}
+      {/* Фильтры и поиск */}
+      <Group>
+        <TextInput
+          label="Поиск абитуриента"
+          placeholder="Фамилия..."
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+        />
+      </Group>
+
+      {/* Верхние карточки */}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
         <StatCard title="Всего мест" value={top.placesTotal} loading={statsQ.isLoading} />
         <StatCard title="Занято мест" value={top.placesFilled} loading={statsQ.isLoading} />
@@ -93,7 +132,7 @@ export function DashboardPage() {
         <StatCard title="Программ" value={top.programs} loading={statsQ.isLoading} />
       </SimpleGrid>
 
-      {/* Stats table */}
+      {/* Таблица статистики */}
       <Card withBorder radius="lg" p="lg">
         <Group justify="space-between" mb="sm">
           <Text fw={700}>Статистика по программам</Text>
@@ -101,24 +140,31 @@ export function DashboardPage() {
         </Group>
 
         {statsQ.isError ? (
-          <Text c="red">Не удалось загрузить /api/statistics</Text>
+          <Text c="red">Не удалось загрузить данные</Text>
         ) : (
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Program</Table.Th>
-                <Table.Th>Places total</Table.Th>
-                <Table.Th>Places filled</Table.Th>
-                <Table.Th>Passing score</Table.Th>
+                <Table.Th>Программа</Table.Th>
+                <Table.Th>Мест всего</Table.Th>
+                <Table.Th>Занято мест</Table.Th>
+                <Table.Th>Проходной балл</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {(statsQ.data ?? []).map((r) => (
                 <Table.Tr key={r.program_code}>
-                  <Table.Td>{r.program_code}</Table.Td>
+                  <Table.Td>{r.program_name} ({r.program_code})</Table.Td>
                   <Table.Td>{r.places_total}</Table.Td>
                   <Table.Td>{r.places_filled}</Table.Td>
-                  <Table.Td>{r.passing_score}</Table.Td>
+                  <Table.Td>
+                    {/* ПУНКТ 14.b: Если мест больше чем людей - НЕДОБОР */}
+                    {r.places_filled < r.places_total ? (
+                      <Badge color="red">НЕДОБОР</Badge>
+                    ) : (
+                      <Badge variant="light" size="lg">{r.passing_score}</Badge>
+                    )}
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -126,73 +172,81 @@ export function DashboardPage() {
         )}
       </Card>
 
-      {/* History chart */}
+      {/* График истории (Добавлен ref) */}
       <Card withBorder radius="lg" p="lg">
         <Group justify="space-between" mb="sm">
           <Text fw={700}>История проходных баллов</Text>
-          {historyQ.isFetching && <Loader size="sm" />}
         </Group>
 
-        {historyQ.isError ? (
-          <Text c="red">Не удалось загрузить /api/history</Text>
-        ) : (
-          <div style={{ width: "100%", height: 320 }}>
-            <ResponsiveContainer>
-              <LineChart data={chartData}>
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {programKeys.map((k) => (
-                  <Line key={k} type="monotone" dataKey={k} dot={false} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+        {/* Оборачиваем график в div с ref для захвата изображения */}
+        <div ref={chartRef} style={{ width: "100%", height: 350, padding: 10, background: 'white' }}>
+          <ResponsiveContainer>
+            <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              {programKeys.map((k, idx) => (
+                // Разные цвета для линий
+                <Line 
+                  key={k} 
+                  type="monotone" 
+                  dataKey={k} 
+                  stroke={['#8884d8', '#82ca9d', '#ffc658', '#ff7300'][idx % 4]} 
+                  strokeWidth={3}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </Card>
 
-      {/* Applicants table */}
+      {/* Таблица абитуриентов */}
       <Card withBorder radius="lg" p="lg">
         <Group justify="space-between" mb="sm">
-          <Text fw={700}>Абитуриенты</Text>
-          {applicantsQ.isFetching && <Loader size="sm" />}
+          <Text fw={700}>Абитуриенты (Топ-лист)</Text>
+          <Group>
+            <NumberInput 
+               min={1} 
+               value={page} 
+               onChange={(v) => setPage(Number(v || 1))} 
+               w={80} 
+            />
+          </Group>
         </Group>
 
-        {applicantsQ.isError ? (
-          <Text c="red">Не удалось загрузить /api/applicants</Text>
-        ) : (
-          <>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>ID</Table.Th>
-                  <Table.Th>Full name</Table.Th>
-                  <Table.Th>Total score</Table.Th>
-                  <Table.Th>Agreed</Table.Th>
-                  <Table.Th>Program</Table.Th>
+        <Table striped highlightOnHover>
+            <Table.Thead>
+            <Table.Tr>
+                <Table.Th>ID</Table.Th>
+                <Table.Th>ФИО</Table.Th>
+                <Table.Th>Сумма баллов</Table.Th>
+                <Table.Th>Согласие</Table.Th>
+                <Table.Th>Зачислен на</Table.Th>
+            </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+            {(applicantsQ.data?.data ?? []).map((a) => (
+                <Table.Tr key={a.id}>
+                <Table.Td>{a.id}</Table.Td>
+                <Table.Td>{a.full_name}</Table.Td>
+                <Table.Td fw={700}>{a.total_score}</Table.Td>
+                <Table.Td>
+                    {a.agreed ? <Badge color="green">Да</Badge> : <Badge color="gray">Нет</Badge>}
+                </Table.Td>
+                <Table.Td>
+                    {a.current_program ? (
+                        <Badge color="blue">{a.current_program}</Badge>
+                    ) : (
+                        "-"
+                    )}
+                </Table.Td>
                 </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {(applicantsQ.data?.data ?? []).map((a) => (
-                  <Table.Tr key={a.id}>
-                    <Table.Td>{a.id}</Table.Td>
-                    <Table.Td>{a.full_name}</Table.Td>
-                    <Table.Td>{a.total_score}</Table.Td>
-                    <Table.Td>
-                      {a.agreed ? <Badge>Yes</Badge> : <Badge color="gray">No</Badge>}
-                    </Table.Td>
-                    <Table.Td>{a.current_program}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-
-            <Text mt="sm" c="dimmed" size="sm">
-              Total pages: {applicantsQ.data?.meta?.total_pages ?? "—"}
-            </Text>
-          </>
-        )}
+            ))}
+            </Table.Tbody>
+        </Table>
+        <Text size="xs" c="dimmed" mt="xs">Страница {page} из {applicantsQ.data?.meta?.total_pages}</Text>
       </Card>
     </Stack>
   );

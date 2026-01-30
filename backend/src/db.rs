@@ -1,5 +1,6 @@
-use sqlx::{SqlitePool, Row};
+use sqlx::{SqlitePool, Row, QueryBuilder, Sqlite};
 use crate::models::{Applicant, Scores};
+
 pub async fn get_applicants(pool: &SqlitePool, limit: i32, offset: i32) -> Result<Vec<Applicant>, sqlx::Error> {
     let rows = sqlx::query(r#"
         SELECT id, full_name, agreed, total_score, 
@@ -13,6 +14,7 @@ pub async fn get_applicants(pool: &SqlitePool, limit: i32, offset: i32) -> Resul
         .bind(offset)
         .fetch_all(pool)
         .await?;
+    
     let applicants = rows.into_iter().map(|row| {
         let priorities_str: String = row.get("priorities");
         let priorities: Vec<String> = serde_json::from_str(&priorities_str).unwrap_or_default();
@@ -42,6 +44,7 @@ pub async fn count_applicants(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
         .await?;
     Ok(count.0)
 }
+
 pub struct NewApplicant {
     pub external_id: i32,
     pub full_name: String,
@@ -102,5 +105,25 @@ pub async fn set_admission_program(pool: &SqlitePool, applicant_internal_id: i32
         .bind(applicant_internal_id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+pub async fn delete_missing_applicants(pool: &SqlitePool, present_external_ids: &[i32]) -> Result<(), sqlx::Error> {
+    if present_external_ids.is_empty() {
+        sqlx::query("DELETE FROM applicants").execute(pool).await?;
+        return Ok(());
+    }
+
+    let mut builder: QueryBuilder<Sqlite> = QueryBuilder::new("DELETE FROM applicants WHERE external_id NOT IN (");
+    
+    let mut separated = builder.separated(", ");
+    for id in present_external_ids {
+        separated.push_bind(id);
+    }
+    separated.push_unseparated(")");
+
+    let query = builder.build();
+    query.execute(pool).await?;
+
     Ok(())
 }

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+
 #[derive(Serialize)]
 pub struct ApplicantListResponse {
     pub data: Vec<Applicant>,
@@ -40,11 +41,14 @@ pub struct ProgramStats {
     pub passing_score: i32,
     pub is_shortage: bool
 }
+
 #[derive(Serialize)]
 pub struct ImportResponse {
     pub status: String,
     pub message: String,
     pub stats: ImportStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -54,12 +58,27 @@ pub struct ImportStats {
 
 #[derive(Debug, Deserialize)]
 pub struct CsvApplicant {
+    #[serde(alias = "id", alias = "ID", alias = "Уникальный идентификатор абитуриента (ID)")]
     pub id: i32,
+
+    #[serde(alias = "name", alias = "ФИО", alias = "Full Name")]
     pub name: String,
+
+    #[serde(alias = "math", alias = "Балл Математика", alias = "Математика")]
     pub math: i32,
+
+    #[serde(alias = "rus", alias = "Балл Русский язык", alias = "Русский язык")]
     pub rus: i32,
+
+    #[serde(alias = "phys", alias = "Балл Физика/ИКТ", alias = "Физика", alias = "Информатика")]
     pub phys: i32,
+
+    #[serde(alias = "achieve", alias = "Балл за индивидуальные достижения", alias = "ИД")]
     pub achieve: i32,
+
+    #[serde(alias = "agreed", alias = "Наличие согласия о зачислении в ВУЗе", alias = "Согласие")]
     pub agreed: String,
+
+    #[serde(alias = "priorities", alias = "Приоритет ОП", alias = "Приоритеты")]
     pub priorities: String,
 }

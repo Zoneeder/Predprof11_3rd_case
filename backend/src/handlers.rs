@@ -2,10 +2,11 @@ use axum::{
     extract::{Multipart, Query, State},
     Json,
 };
-use serde_json::{json};
+use serde_json::json;
 use std::collections::HashMap;
 use csv::ReaderBuilder;
 use sqlx::Row;
+use chrono::Local;
 use crate::{models::*, AppState, db, logic};
 use crate::db::NewApplicant;
 
@@ -94,9 +95,23 @@ pub async fn import_data(
     State(state): State<AppState>,
     mut multipart: Multipart
 ) -> Json<ImportResponse> {
+    
+    let prev_count = db::count_applicants(&state.db).await.unwrap_or(0);
     let mut stats = ImportStats { processed: 0 };
+    let mut processed_external_ids: Vec<i32> = Vec::new();
+    let mut report_date = Local::now().format("%Y-%m-%d").to_string();
+
     while let Some(field) = multipart.next_field().await.unwrap() {
         let name = field.name().unwrap().to_string();
+
+        if name == "date" {
+            if let Ok(text) = field.text().await {
+                if !text.is_empty() {
+                    report_date = text;
+                }
+            }
+            continue;
+        }
 
         if name == "file" {
             let data = field.bytes().await.unwrap();
@@ -108,12 +123,15 @@ pub async fn import_data(
                 let record: CsvApplicant = match result {
                     Ok(r) => r,
                     Err(e) => {
-                        println!("Ошибка парсинга строки: {}", e);
+                        println!("Ошибка парсинга: {}", e);
                         continue;
                     }
                 };
+                
+                processed_external_ids.push(record.id);
 
-                let is_agreed = record.agreed.to_lowercase() == "true" || record.agreed == "1";
+                let val = record.agreed.trim().to_lowercase();
+                let is_agreed = val == "true" || val == "1" || val == "да" || val == "+";
 
                 let priorities_vec: Vec<String> = record.priorities
                     .split(';')
@@ -131,6 +149,7 @@ pub async fn import_data(
                     agreed: is_agreed,
                     priorities: priorities_vec,
                 };
+                
                 match db::upsert_applicant(&state.db, &new_applicant).await {
                     Ok(_) => {
                         stats.processed += 1;
@@ -140,15 +159,36 @@ pub async fn import_data(
             }
         }
     }
+
+    if let Err(e) = db::delete_missing_applicants(&state.db, &processed_external_ids).await {
+        println!("Ошибка при удалении: {}", e);
+    }
+
     let pool_clone = state.db.clone();
+    let date_clone = report_date.clone();
     tokio::spawn(async move {
-        logic::recalculate_admissions(&pool_clone).await;
+        logic::recalculate_admissions(&pool_clone, &date_clone).await;
     });
-    
+
+    let new_count = processed_external_ids.len() as i64;
+    let mut warning = None;
+
+    if prev_count > 0 {
+        let diff = (prev_count - new_count).abs();
+        let change_percent = (diff as f64 / prev_count as f64) * 100.0;
+        if change_percent > 10.0 {
+            warning = Some(format!(
+                "Изменение объема данных на {:.1}% (было: {}, стало: {})",
+                change_percent, prev_count, new_count
+            ));
+        }
+    }
+
     Json(ImportResponse {
         status: "success".to_string(),
-        message: format!("Processed {} records", stats.processed),
+        message: format!("Обработано {} записей за дату {}", stats.processed, report_date),
         stats,
+        warning,
     })
 }
 
