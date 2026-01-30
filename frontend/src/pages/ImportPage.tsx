@@ -26,7 +26,7 @@ export function ImportPage() {
       const response = await importMutation.mutateAsync({ file, date });
       
       // Приводим тип, чтобы TS знал о поле warning
-      const data = response as unknown as ImportResponseData;
+      const data = response as unknown as ImportResponse;
 
       // 1. Проверяем наличие предупреждения (Аномалия > 10%)
       if (data.warning) {

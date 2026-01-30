@@ -45,10 +45,10 @@ export function DashboardPage() {
   // --- ЛОГИКА ДЛЯ ВЕРХНИХ КАРТОЧЕК ---
   const top = useMemo(() => {
     const rows = statsQ.data ?? [];
-    const placesTotal = rows.reduce((s, r) => s + r.places_total, 0);
-    const placesFilled = rows.reduce((s, r) => s + r.places_filled, 0);
+    const placesTotal = rows.reduce((s: number, r: any) => s + r.places_total, 0);
+    const placesFilled = rows.reduce((s: number, r: any) => s + r.places_filled, 0);
     const avgPassing =
-      rows.length ? Math.round(rows.reduce((s, r) => s + r.passing_score, 0) / rows.length) : 0;
+      rows.length ? Math.round(rows.reduce((s: number, r: any) => s + r.passing_score, 0) / rows.length) : 0;
     return { placesTotal, placesFilled, avgPassing, programs: rows.length };
   }, [statsQ.data]);
 
@@ -152,7 +152,7 @@ export function DashboardPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {(statsQ.data ?? []).map((r) => (
+              {(statsQ.data ?? []).map((r: any) => (
                 <Table.Tr key={r.program_code}>
                   <Table.Td>{r.program_name} ({r.program_code})</Table.Td>
                   <Table.Td>{r.places_total}</Table.Td>
