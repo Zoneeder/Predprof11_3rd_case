@@ -39,7 +39,18 @@ pub struct ProgramStats {
     pub places_total: i32,
     pub places_filled: i32,
     pub passing_score: i32,
-    pub is_shortage: bool
+    pub is_shortage: bool,
+    
+    // Новые поля для ТЗ
+    pub count_priority_1: i32,
+    pub count_priority_2: i32,
+    pub count_priority_3: i32,
+    pub count_priority_4: i32, // Максимум 4 приоритета по ТЗ
+    
+    pub enrolled_priority_1: i32,
+    pub enrolled_priority_2: i32,
+    pub enrolled_priority_3: i32,
+    pub enrolled_priority_4: i32,
 }
 
 #[derive(Serialize)]

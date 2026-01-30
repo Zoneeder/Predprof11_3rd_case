@@ -12,10 +12,11 @@ import {
   Text,
   TextInput,
   Title,
+  useComputedColorScheme, // Добавлен импорт
 } from "@mantine/core";
-import { IconFileTypePdf } from "@tabler/icons-react"; // Иконка PDF
+import { IconFileTypePdf } from "@tabler/icons-react";
 import { useApplicants, useHistory, useStatistics } from "../api/hooks";
-import { getApplicants } from "../api/api"; // Импортируем функцию API напрямую для отчета
+import { getApplicants } from "../api/api";
 import {
   LineChart,
   Line,
@@ -30,6 +31,18 @@ import { generateReport } from "../utils/pdf";
 import { notifications } from "@mantine/notifications";
 
 export function DashboardPage() {
+  // Определяем цветовую схему (светлая/темная)
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
+  // Цвета для графика в зависимости от темы
+  const chartStyles = {
+    grid: isDark ? "#373A40" : "#e0e0e0",
+    text: isDark ? "#C1C2C5" : "#000000",
+    tooltipBg: isDark ? "#25262b" : "#ffffff",
+    tooltipBorder: isDark ? "#373A40" : "#ccc"
+  };
+
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const [search, setSearch] = useState("");
@@ -74,14 +87,9 @@ export function DashboardPage() {
     if (!statsQ.data) return;
     setGeneratingPdf(true);
     try {
-      // 1. Загружаем полный список студентов для списков зачисления (без пагинации)
-      // В реальном проекте лучше endpoint /api/export, но здесь делаем запрос с большим limit
       const fullList = await getApplicants({ page: 1, limit: 10000 });
-      
-      // 2. Определяем последнюю дату из графика как "текущую дату данных"
       const lastDate = chartData.length > 0 ? chartData[chartData.length - 1].date : "2024-08-0X";
 
-      // 3. Генерируем
       await generateReport({
         stats: statsQ.data,
         applicants: fullList.data,
@@ -103,7 +111,6 @@ export function DashboardPage() {
       <Group justify="space-between" align="flex-end">
         <Title order={2}>Dashboard</Title>
         
-        {/* Кнопка скачивания отчета */}
         <Button 
           leftSection={<IconFileTypePdf size={18}/>} 
           onClick={handleDownloadReport}
@@ -114,7 +121,6 @@ export function DashboardPage() {
         </Button>
       </Group>
 
-      {/* Фильтры и поиск */}
       <Group>
         <TextInput
           label="Поиск абитуриента"
@@ -124,7 +130,6 @@ export function DashboardPage() {
         />
       </Group>
 
-      {/* Верхние карточки */}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
         <StatCard title="Всего мест" value={top.placesTotal} loading={statsQ.isLoading} />
         <StatCard title="Занято мест" value={top.placesFilled} loading={statsQ.isLoading} />
@@ -132,7 +137,6 @@ export function DashboardPage() {
         <StatCard title="Программ" value={top.programs} loading={statsQ.isLoading} />
       </SimpleGrid>
 
-      {/* Таблица статистики */}
       <Card withBorder radius="lg" p="lg">
         <Group justify="space-between" mb="sm">
           <Text fw={700}>Статистика по программам</Text>
@@ -158,7 +162,6 @@ export function DashboardPage() {
                   <Table.Td>{r.places_total}</Table.Td>
                   <Table.Td>{r.places_filled}</Table.Td>
                   <Table.Td>
-                    {/* ПУНКТ 14.b: Если мест больше чем людей - НЕДОБОР */}
                     {r.places_filled < r.places_total ? (
                       <Badge color="red">НЕДОБОР</Badge>
                     ) : (
@@ -172,29 +175,40 @@ export function DashboardPage() {
         )}
       </Card>
 
-      {/* График истории (Добавлен ref) */}
+      {/* График истории (Обновленный) */}
       <Card withBorder radius="lg" p="lg">
         <Group justify="space-between" mb="sm">
           <Text fw={700}>История проходных баллов</Text>
         </Group>
 
-        {/* Оборачиваем график в div с ref для захвата изображения */}
-        <div ref={chartRef} style={{ width: "100%", height: 350, padding: 10, background: 'white' }}>
+        <div ref={chartRef} style={{ 
+            width: "100%", 
+            height: 350, 
+            padding: 10, 
+            background: isDark ? '#1A1B1E' : 'white', 
+            borderRadius: 8 
+        }}>
           <ResponsiveContainer>
             <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartStyles.grid} />
+              <XAxis dataKey="date" stroke={chartStyles.text} />
+              <YAxis stroke={chartStyles.text} />
+              <Tooltip 
+                contentStyle={{ 
+                    backgroundColor: chartStyles.tooltipBg, 
+                    borderColor: chartStyles.tooltipBorder,
+                    color: chartStyles.text 
+                }} 
+              />
               <Legend />
               {programKeys.map((k, idx) => (
-                // Разные цвета для линий
                 <Line 
                   key={k} 
                   type="monotone" 
                   dataKey={k} 
                   stroke={['#8884d8', '#82ca9d', '#ffc658', '#ff7300'][idx % 4]} 
                   strokeWidth={3}
+                  dot={{ r: 4 }}
                 />
               ))}
             </LineChart>
@@ -202,7 +216,6 @@ export function DashboardPage() {
         </div>
       </Card>
 
-      {/* Таблица абитуриентов */}
       <Card withBorder radius="lg" p="lg">
         <Group justify="space-between" mb="sm">
           <Text fw={700}>Абитуриенты (Топ-лист)</Text>

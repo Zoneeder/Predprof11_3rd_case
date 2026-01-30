@@ -48,7 +48,8 @@ pub async fn get_applicants(
 }
 
 pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>> {
-    let rows = sqlx::query(
+    // 1. Получаем базовые цифры из истории (как было)
+    let history_rows = sqlx::query(
         r#"
         SELECT program_code, passing_score, places_filled
         FROM history_stats
@@ -58,22 +59,49 @@ pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>>
         .fetch_all(&state.db)
         .await
         .unwrap_or_default();
+
+    // 2. Получаем ВСЕХ абитуриентов для подсчета приоритетов
+    // (В реальном проде это делается одним SQL запросом с CASE/GROUP BY, но для понятности сделаем в коде)
+    let applicants = db::get_applicants(&state.db, 100000, 0).await.unwrap_or_default();
+
     let limits = HashMap::from([
         ("ПМ", 40), ("ИВТ", 50), ("ИТСС", 30), ("ИБ", 20)
     ]);
 
     let mut result = Vec::new();
+    let codes = vec!["ПМ", "ИВТ", "ИТСС", "ИБ"];
 
-    for (code, &total) in limits.iter() {
-        let stat_row = rows.iter().find(|r| r.get::<String, _>("program_code") == *code);
-
+    for code in codes {
+        // Базовая статистика
+        let stat_row = history_rows.iter().find(|r| r.get::<String, _>("program_code") == code);
         let (filled, score) = match stat_row {
             Some(row) => (row.get::<i32, _>("places_filled"), row.get::<i32, _>("passing_score")),
             None => (0, 0),
         };
+        let total_places = *limits.get(code).unwrap_or(&0) as i32;
+
+        // Подсчет приоритетов
+        let mut count_p = [0; 4];
+        let mut enrol_p = [0; 4];
+
+        for app in &applicants {
+            // Ищем, на какой позиции у абитуриента стоит текущая программа (code)
+            if let Some(idx) = app.priorities.iter().position(|p| p == code) {
+                if idx < 4 {
+                    count_p[idx] += 1;
+                    
+                    // Если он зачислен именно на эту программу
+                    if let Some(curr) = &app.current_program {
+                        if curr == code {
+                            enrol_p[idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
 
         result.push(ProgramStats {
-            program_name: match *code {
+            program_name: match code {
                 "ПМ" => "Прикладная математика".to_string(),
                 "ИВТ" => "Информатика и ВТ".to_string(),
                 "ИТСС" => "Связь и телекоммуникации".to_string(),
@@ -81,10 +109,20 @@ pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>>
                 _ => code.to_string(),
             },
             program_code: code.to_string(),
-            places_total: total,
+            places_total: total_places,
             places_filled: filled,
             passing_score: score,
-            is_shortage: filled < total,
+            is_shortage: filled < total_places,
+            
+            // Заполняем новые поля
+            count_priority_1: count_p[0],
+            count_priority_2: count_p[1],
+            count_priority_3: count_p[2],
+            count_priority_4: count_p[3],
+            enrolled_priority_1: enrol_p[0],
+            enrolled_priority_2: enrol_p[1],
+            enrolled_priority_3: enrol_p[2],
+            enrolled_priority_4: enrol_p[3],
         });
     }
 
