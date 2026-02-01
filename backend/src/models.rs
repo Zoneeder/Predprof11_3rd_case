@@ -93,3 +93,23 @@ pub struct CsvApplicant {
     #[serde(alias = "priorities", alias = "Приоритет ОП", alias = "Приоритеты")]
     pub priorities: String,
 }
+
+#[derive(Serialize)]
+pub struct IntersectionStats {
+    // Пары (только 2 ОП)
+    pub pm_ivt: i32,
+    pub pm_itss: i32,
+    pub pm_ib: i32,
+    pub ivt_itss: i32,
+    pub ivt_ib: i32,
+    pub itss_ib: i32,
+
+    // Тройки (3 ОП)
+    pub pm_ivt_itss: i32,
+    pub pm_ivt_ib: i32,
+    pub ivt_itss_ib: i32,
+    pub pm_itss_ib: i32,
+    
+    // Четверка (4 ОП)
+    pub all_four: i32,
+}

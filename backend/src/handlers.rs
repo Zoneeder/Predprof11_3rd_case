@@ -2,7 +2,7 @@ use axum::{
     extract::{Multipart, Query, State},
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use csv::ReaderBuilder;
 use sqlx::Row;
@@ -144,8 +144,10 @@ pub async fn import_data(
 
         if name == "date" {
             if let Ok(text) = field.text().await {
-                if !text.is_empty() {
+                if let Ok(_) = chrono::NaiveDate::parse_from_str(&text, "%Y-%m-%d") {
                     report_date = text;
+                } else {
+                    println!("Warning: Invalid date format received: '{}'. Using current date.", text);
                 }
             }
             continue;
@@ -252,4 +254,61 @@ pub async fn get_history(State(state): State<AppState>) -> Json<HashMap<String, 
     }
 
     Json(history)
+}
+
+pub async fn get_intersections(State(state): State<AppState>) -> Json<IntersectionStats> {
+    let applicants = db::get_applicants(&state.db, 100000, 0)
+        .await
+        .unwrap_or_default();
+
+    let mut stats = IntersectionStats {
+        pm_ivt: 0, pm_itss: 0, pm_ib: 0,
+        ivt_itss: 0, ivt_ib: 0, itss_ib: 0,
+        pm_ivt_itss: 0, pm_ivt_ib: 0, ivt_itss_ib: 0, pm_itss_ib: 0,
+        all_four: 0,
+    };
+
+    for app in applicants {
+        let mut codes = app.priorities.clone();
+        codes.sort();
+        codes.dedup();
+
+        // --- ИСПРАВЛЕНИЕ ТУТ ---
+        // Превращаем Vec<String> в Vec<&str>, чтобы работало сравнение с "ПМ", "ИВТ" и т.д.
+        let codes_refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
+
+        match codes_refs.as_slice() {
+            // --- ПАРЫ (2 ОП) ---
+            ["ИВТ", "ПМ"] => stats.pm_ivt += 1,
+            ["ИТСС", "ПМ"] => stats.pm_itss += 1,
+            ["ИБ", "ПМ"] => stats.pm_ib += 1,
+            ["ИВТ", "ИТСС"] => stats.ivt_itss += 1,
+            ["ИБ", "ИВТ"] => stats.ivt_ib += 1,
+            ["ИБ", "ИТСС"] => stats.itss_ib += 1,
+
+            // --- ТРОЙКИ (3 ОП) ---
+            ["ИВТ", "ИТСС", "ПМ"] => stats.pm_ivt_itss += 1,
+            ["ИБ", "ИВТ", "ПМ"] => stats.pm_ivt_ib += 1,
+            ["ИБ", "ИВТ", "ИТСС"] => stats.ivt_itss_ib += 1,
+            ["ИБ", "ИТСС", "ПМ"] => stats.pm_itss_ib += 1,
+
+            // --- ЧЕТВЕРКА (4 ОП) ---
+            ["ИБ", "ИВТ", "ИТСС", "ПМ"] => stats.all_four += 1,
+            
+            _ => {} 
+        }
+    }
+
+    Json(stats)
+}
+
+pub async fn clear_database(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Очищаем таблицы абитуриентов и истории
+    let _ = sqlx::query("DELETE FROM applicants").execute(&state.db).await;
+    let _ = sqlx::query("DELETE FROM history_stats").execute(&state.db).await;
+    
+    // Сбрасываем счетчик автоинкремента (для красоты ID)
+    let _ = sqlx::query("DELETE FROM sqlite_sequence WHERE name='applicants'").execute(&state.db).await;
+
+    Json(serde_json::json!({ "status": "ok", "message": "База данных очищена" }))
 }

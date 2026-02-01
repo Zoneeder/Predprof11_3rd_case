@@ -4,6 +4,8 @@ import type {
   ImportResponse,
 } from "./types";
 
+import type { IntersectionStats } from "./types";
+
 const baseURL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 export const http = axios.create({
@@ -69,4 +71,14 @@ export async function getStatistics() {
     [];
 
   return rows;
+}
+
+export async function getIntersections() {
+  const res = await http.get<IntersectionStats>("/api/intersections");
+  return res.data;
+}
+
+export async function clearDatabase() {
+  const res = await http.post("/api/clear");
+  return res.data;
 }
