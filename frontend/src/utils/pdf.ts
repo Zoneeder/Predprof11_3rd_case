@@ -1,28 +1,25 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import html2canvas from "html2canvas";
+// Убедитесь, что путь правильный: ../api/types
 import type { Applicant, StatsRow } from "../api/types";
 
-// Хелпер для загрузки шрифта
 // Хелпер для загрузки шрифта
 async function loadFont(doc: jsPDF, path: string, fontName: string) {
   try {
     const res = await fetch(path);
-    if (!res.ok) throw new Error(`Font not found at ${path}`);
+    if (!res.ok) throw new Error("Font not found");
     const blob = await res.blob();
     const reader = new FileReader();
-
+    
     return new Promise<void>((resolve) => {
       reader.onloadend = () => {
         const base64 = reader.result as string;
+        // Удаляем префикс data:font/ttf;base64, (если он есть) или берем как есть
         const data = base64.split(",")[1] || base64;
-
-        doc.addFileToVFS(`${fontName}.ttf`, data);
         
+        doc.addFileToVFS(`${fontName}.ttf`, data);
         doc.addFont(`${fontName}.ttf`, fontName, "normal");
-  
-        doc.addFont(`${fontName}.ttf`, fontName, "bold"); 
-
         doc.setFont(fontName);
         resolve();
       };
@@ -44,34 +41,34 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
   const doc = new jsPDF();
 
   // 1. Подключаем русский шрифт
-  // Файл должен лежать в public/fonts/Roboto-Regular.ttf
+  // Убедитесь, что файл лежит в папке public/fonts/Roboto-Regular.ttf
   await loadFont(doc, "/fonts/Roboto-Regular.ttf", "Roboto");
 
   // 2. Заголовок
   doc.setFontSize(18);
   doc.text(`Отчет о ходе приемной кампании`, 14, 20);
-
+  
   doc.setFontSize(12);
   doc.text(`Дата формирования: ${new Date().toLocaleString("ru-RU")}`, 14, 28);
   doc.text(`Актуально на дату: ${date}`, 14, 34);
 
   let currentY = 45;
 
-  // ---------------------------------------------------------
-  // 3. Таблица общей статистики
-  // ---------------------------------------------------------
+  // 3. Таблица статистики
   doc.setFontSize(14);
   doc.text("Сводная статистика", 14, currentY);
   currentY += 5;
 
   const statsBody = stats.map((row) => {
+    // Логика НЕДОБОР: если занято мест меньше, чем всего мест
     let passingScoreDisplay = row.passing_score.toString();
+    
     if (row.places_filled < row.places_total) {
       passingScoreDisplay = "НЕДОБОР";
     }
 
     return [
-      row.program_code,
+      row.program_code, // ПМ, ИВТ...
       row.places_total,
       row.places_filled,
       passingScoreDisplay,
@@ -82,26 +79,15 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
     startY: currentY,
     head: [["Программа", "Мест всего", "Занято", "Проходной балл"]],
     body: statsBody,
-    styles: { 
-      font: "Roboto", // ВАЖНО: шрифт для тела таблицы
-      fontSize: 10 
-    },
-    headStyles: { 
-      fillColor: [44, 62, 80],
-      font: "Roboto"  // ВАЖНО: шрифт для шапки
-    },
+    styles: { font: "Roboto", fontSize: 10 },
+    headStyles: { fillColor: [44, 62, 80] },
   });
 
   // @ts-ignore
   currentY = doc.lastAutoTable.finalY + 15;
 
-  // ---------------------------------------------------------
   // 4. График
-  // ---------------------------------------------------------
   if (chartElement) {
-    // Проверяем, влезет ли заголовок графика
-    if (currentY + 10 > 280) { doc.addPage(); currentY = 20; }
-    
     doc.setFontSize(14);
     doc.text("Динамика проходных баллов", 14, currentY);
     currentY += 5;
@@ -109,11 +95,10 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
     try {
       const canvas = await html2canvas(chartElement, { scale: 2 });
       const imgData = canvas.toDataURL("image/png");
-
-      const imgWidth = 180;
+      
+      const imgWidth = 180; 
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      // Проверяем, влезет ли картинка
       if (currentY + imgHeight > 280) {
         doc.addPage();
         currentY = 20;
@@ -126,60 +111,9 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
     }
   }
 
-  // ---------------------------------------------------------
-  // 5. Таблица детализации по приоритетам (ТЗ п.14.e)
-  // ---------------------------------------------------------
-  // Проверяем место на странице
-  if (currentY + 60 > 280) { 
-    doc.addPage(); 
-    currentY = 20; 
-  }
-
-  doc.setFontSize(14);
-  doc.text("Статистика по приоритетам", 14, currentY);
-  currentY += 5;
-
-  // Используем (r as any), так как типы могут быть еще не обновлены в types.ts
-  const prioritiesBody = stats.map((r: any) => [
-    r.program_code,
-    r.count_priority_1 ?? 0, 
-    r.count_priority_2 ?? 0, 
-    r.count_priority_3 ?? 0, 
-    r.count_priority_4 ?? 0,
-    r.enrolled_priority_1 ?? 0, 
-    r.enrolled_priority_2 ?? 0, 
-    r.enrolled_priority_3 ?? 0, 
-    r.enrolled_priority_4 ?? 0
-  ]);
-
-  autoTable(doc, {
-    startY: currentY,
-    head: [
-        ["ОП", "Заяв 1", "Заяв 2", "Заяв 3", "Заяв 4", "Зач 1", "Зач 2", "Зач 3", "Зач 4"]
-    ],
-    body: prioritiesBody,
-    styles: { 
-        font: "Roboto", 
-        fontSize: 8, 
-        halign: 'center' 
-    },
-    headStyles: { 
-        fillColor: [44, 62, 80], 
-        font: "Roboto" 
-    },
-    columnStyles: { 
-        0: { fontStyle: 'bold', halign: 'left' } 
-    }
-  });
-
-  // @ts-ignore
-  currentY = doc.lastAutoTable.finalY + 15;
-
-  // ---------------------------------------------------------
-  // 6. Списки зачисленных
-  // ---------------------------------------------------------
+  // 5. Списки зачисленных
   const admitted = applicants.filter(a => a.current_program);
-  const programs = ["ПМ", "ИВТ", "ИТСС", "ИБ"];
+  const programs = ["ПМ", "ИВТ", "ИТСС", "ИБ"]; 
 
   doc.addPage();
   currentY = 20;
@@ -191,13 +125,11 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
     const list = admitted.filter(a => a.current_program === code);
     if (list.length === 0) continue;
 
-    // Сортировка по баллу
     list.sort((a, b) => b.total_score - a.total_score);
 
-    // Если мало места для заголовка таблицы
-    if (currentY > 260) {
-      doc.addPage();
-      currentY = 20;
+    if (currentY > 250) {
+        doc.addPage();
+        currentY = 20;
     }
 
     doc.setFontSize(12);
@@ -214,11 +146,7 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
       startY: currentY,
       head: [["ID", "ФИО", "Сумма баллов"]],
       body: listBody,
-      styles: { 
-        font: "Roboto", // ВАЖНО
-        fontSize: 9 
-      },
-      headStyles: { font: "Roboto" },
+      styles: { font: "Roboto", fontSize: 9 },
       pageBreak: 'auto',
     });
 

@@ -39,18 +39,7 @@ pub struct ProgramStats {
     pub places_total: i32,
     pub places_filled: i32,
     pub passing_score: i32,
-    pub is_shortage: bool,
-    
-    // Новые поля для ТЗ
-    pub count_priority_1: i32,
-    pub count_priority_2: i32,
-    pub count_priority_3: i32,
-    pub count_priority_4: i32, // Максимум 4 приоритета по ТЗ
-    
-    pub enrolled_priority_1: i32,
-    pub enrolled_priority_2: i32,
-    pub enrolled_priority_3: i32,
-    pub enrolled_priority_4: i32,
+    pub is_shortage: bool
 }
 
 #[derive(Serialize)]
@@ -92,24 +81,4 @@ pub struct CsvApplicant {
 
     #[serde(alias = "priorities", alias = "Приоритет ОП", alias = "Приоритеты")]
     pub priorities: String,
-}
-
-#[derive(Serialize)]
-pub struct IntersectionStats {
-    // Пары (только 2 ОП)
-    pub pm_ivt: i32,
-    pub pm_itss: i32,
-    pub pm_ib: i32,
-    pub ivt_itss: i32,
-    pub ivt_ib: i32,
-    pub itss_ib: i32,
-
-    // Тройки (3 ОП)
-    pub pm_ivt_itss: i32,
-    pub pm_ivt_ib: i32,
-    pub ivt_itss_ib: i32,
-    pub pm_itss_ib: i32,
-    
-    // Четверка (4 ОП)
-    pub all_four: i32,
 }

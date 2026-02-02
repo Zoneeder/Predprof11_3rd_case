@@ -19,7 +19,7 @@ pub async fn recalculate_admissions(pool: &SqlitePool, date: &str) {
         return;
     }
 
-    let applicants = match db::get_applicants(pool, 100000, 0, None).await {
+    let applicants = match db::get_applicants(pool, 100000, 0).await {
         Ok(list) => list,
         Err(e) => {
             println!("Ошибка получения списка: {}", e);
