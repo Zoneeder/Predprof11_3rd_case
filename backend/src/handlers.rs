@@ -95,11 +95,12 @@ pub async fn import_data(
     State(state): State<AppState>,
     mut multipart: Multipart
 ) -> Json<ImportResponse> {
-    
+
     let prev_count = db::count_applicants(&state.db).await.unwrap_or(0);
     let mut stats = ImportStats { processed: 0 };
-    let mut processed_external_ids: Vec<i32> = Vec::new();
     let mut report_date = Local::now().format("%Y-%m-%d").to_string();
+    
+    let mut applicants_buffer: Vec<NewApplicant> = Vec::with_capacity(12000);
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let name = field.name().unwrap().to_string();
@@ -127,8 +128,6 @@ pub async fn import_data(
                         continue;
                     }
                 };
-                
-                processed_external_ids.push(record.id);
 
                 let val = record.agreed.trim().to_lowercase();
                 let is_agreed = val == "true" || val == "1" || val == "да" || val == "+";
@@ -149,28 +148,34 @@ pub async fn import_data(
                     agreed: is_agreed,
                     priorities: priorities_vec,
                 };
-                
-                match db::upsert_applicant(&state.db, &new_applicant).await {
-                    Ok(_) => {
-                        stats.processed += 1;
-                    },
-                    Err(e) => println!("Ошибка БД для ID {}: {}", record.id, e),
-                }
+
+                applicants_buffer.push(new_applicant);
             }
         }
     }
 
-    if let Err(e) = db::delete_missing_applicants(&state.db, &processed_external_ids).await {
-        println!("Ошибка при удалении: {}", e);
+    stats.processed = applicants_buffer.len() as i32;
+
+    match db::import_batch(&state.db, applicants_buffer).await {
+        Ok(_) => (),
+        Err(e) => {
+            return Json(ImportResponse {
+                status: "error".to_string(),
+                message: format!("Ошибка БД: {}", e),
+                stats: ImportStats { processed: 0 },
+                warning: None,
+            });
+        }
     }
 
     let pool_clone = state.db.clone();
     let date_clone = report_date.clone();
+
     tokio::spawn(async move {
         logic::recalculate_admissions(&pool_clone, &date_clone).await;
     });
 
-    let new_count = processed_external_ids.len() as i64;
+    let new_count = db::count_applicants(&state.db).await.unwrap_or(0);
     let mut warning = None;
 
     if prev_count > 0 {
