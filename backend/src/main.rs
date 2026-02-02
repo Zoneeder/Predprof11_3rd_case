@@ -51,10 +51,11 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/import", post(handlers::import_data))
-        .route("/api/applicants", get(handlers::get_applicants))
+        .route("/api/applicants", get(handlers::get_applicants))       
         .route("/api/statistics", get(handlers::get_stats))
         .route("/api/history", get(handlers::get_history))
-        .fallback(assets::static_handler)
+        .route("/api/intersections", get(handlers::get_intersections))
+        .route("/api/clear", post(handlers::clear_database))
         .layer(cors)
         .with_state(state);
 

@@ -57,4 +57,19 @@ export interface HistoryPoint {
   score: number;
 }
 
+export interface IntersectionStats {
+  pm_ivt: number;
+  pm_itss: number;
+  pm_ib: number;
+  ivt_itss: number;
+  ivt_ib: number;
+  itss_ib: number;
+
+  pm_ivt_itss: number;
+  pm_ivt_ib: number;
+  ivt_itss_ib: number;
+  pm_itss_ib: number;
+  all_four: number;
+}
+
 export type HistoryResponse = Record<string, HistoryPoint[]>;
