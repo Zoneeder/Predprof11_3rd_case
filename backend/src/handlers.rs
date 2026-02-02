@@ -14,6 +14,7 @@ use crate::db::NewApplicant;
 pub struct PaginationQuery {
     pub page: Option<usize>,
     pub limit: Option<usize>,
+    pub search: Option<String>,
 }
 
 pub async fn get_applicants(
@@ -24,14 +25,15 @@ pub async fn get_applicants(
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(50) as i32;
     let offset = ((page - 1) * (limit as usize)) as i32;
-    let applicants = db::get_applicants(&state.db, limit, offset)
+    
+    let applicants = db::get_applicants(&state.db, limit, offset, params.search.clone())
         .await
         .unwrap_or_else(|e| {
             println!("DB Error: {}", e);
             vec![]
         });
 
-    let total_items = db::count_applicants(&state.db)
+    let total_items = db::count_applicants(&state.db, params.search)
         .await
         .unwrap_or(0) as usize;
 
@@ -62,7 +64,7 @@ pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>>
 
     // 2. Получаем ВСЕХ абитуриентов для подсчета приоритетов
     // (В реальном проде это делается одним SQL запросом с CASE/GROUP BY, но для понятности сделаем в коде)
-    let applicants = db::get_applicants(&state.db, 100000, 0).await.unwrap_or_default();
+    let applicants = db::get_applicants(&state.db, 100000, 0, None).await.unwrap_or_default();
 
     let limits = HashMap::from([
         ("ПМ", 40), ("ИВТ", 50), ("ИТСС", 30), ("ИБ", 20)
@@ -134,7 +136,7 @@ pub async fn import_data(
     mut multipart: Multipart
 ) -> Json<ImportResponse> {
     
-    let prev_count = db::count_applicants(&state.db).await.unwrap_or(0);
+    let prev_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
     let mut stats = ImportStats { processed: 0 };
     let mut processed_external_ids: Vec<i32> = Vec::new();
     let mut report_date = Local::now().format("%Y-%m-%d").to_string();
@@ -257,9 +259,9 @@ pub async fn get_history(State(state): State<AppState>) -> Json<HashMap<String, 
 }
 
 pub async fn get_intersections(State(state): State<AppState>) -> Json<IntersectionStats> {
-    let applicants = db::get_applicants(&state.db, 100000, 0)
-        .await
-        .unwrap_or_default();
+    let applicants = db::get_applicants(&state.db, 100000, 0, None)
+    .await
+    .unwrap_or_default();
 
     let mut stats = IntersectionStats {
         pm_ivt: 0, pm_itss: 0, pm_ib: 0,

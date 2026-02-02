@@ -4,21 +4,25 @@ import html2canvas from "html2canvas";
 import type { Applicant, StatsRow } from "../api/types";
 
 // Хелпер для загрузки шрифта
+// Хелпер для загрузки шрифта
 async function loadFont(doc: jsPDF, path: string, fontName: string) {
   try {
     const res = await fetch(path);
-    if (!res.ok) throw new Error("Font not found");
+    if (!res.ok) throw new Error(`Font not found at ${path}`);
     const blob = await res.blob();
     const reader = new FileReader();
 
     return new Promise<void>((resolve) => {
       reader.onloadend = () => {
         const base64 = reader.result as string;
-        // Удаляем префикс data:font/ttf;base64, (если он есть) или берем как есть
         const data = base64.split(",")[1] || base64;
 
         doc.addFileToVFS(`${fontName}.ttf`, data);
+        
         doc.addFont(`${fontName}.ttf`, fontName, "normal");
+  
+        doc.addFont(`${fontName}.ttf`, fontName, "bold"); 
+
         doc.setFont(fontName);
         resolve();
       };

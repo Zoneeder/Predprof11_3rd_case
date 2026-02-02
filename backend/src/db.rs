@@ -1,15 +1,19 @@
 use sqlx::{SqlitePool, Row, QueryBuilder, Sqlite};
 use crate::models::{Applicant, Scores};
 
-pub async fn get_applicants(pool: &SqlitePool, limit: i32, offset: i32) -> Result<Vec<Applicant>, sqlx::Error> {
+pub async fn get_applicants(pool: &SqlitePool, limit: i32, offset: i32, search: Option<String>) -> Result<Vec<Applicant>, sqlx::Error> {
+    let search_pattern = format!("%{}%", search.unwrap_or_default());
+
     let rows = sqlx::query(r#"
         SELECT id, full_name, agreed, total_score, 
                score_math, score_rus, score_phys, score_achieve, 
                priorities, current_program
         FROM applicants
+        WHERE full_name LIKE ?
         ORDER BY total_score DESC
         LIMIT ? OFFSET ?
         "#)
+        .bind(search_pattern)
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)
@@ -38,8 +42,10 @@ pub async fn get_applicants(pool: &SqlitePool, limit: i32, offset: i32) -> Resul
     Ok(applicants)
 }
 
-pub async fn count_applicants(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM applicants")
+pub async fn count_applicants(pool: &SqlitePool, search: Option<String>) -> Result<i64, sqlx::Error> {
+    let search_pattern = format!("%{}%", search.unwrap_or_default());
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM applicants WHERE full_name LIKE ?")
+        .bind(search_pattern)
         .fetch_one(pool)
         .await?;
     Ok(count.0)
