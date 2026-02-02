@@ -2,7 +2,7 @@ use axum::{
     extract::{Multipart, Query, State},
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use csv::ReaderBuilder;
 use sqlx::Row;
@@ -14,6 +14,7 @@ use crate::db::NewApplicant;
 pub struct PaginationQuery {
     pub page: Option<usize>,
     pub limit: Option<usize>,
+    pub search: Option<String>,
 }
 
 pub async fn get_applicants(
@@ -24,14 +25,15 @@ pub async fn get_applicants(
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(50) as i32;
     let offset = ((page - 1) * (limit as usize)) as i32;
-    let applicants = db::get_applicants(&state.db, limit, offset)
+    
+    let applicants = db::get_applicants(&state.db, limit, offset, params.search.clone())
         .await
         .unwrap_or_else(|e| {
             println!("DB Error: {}", e);
             vec![]
         });
 
-    let total_items = db::count_applicants(&state.db)
+    let total_items = db::count_applicants(&state.db, params.search)
         .await
         .unwrap_or(0) as usize;
 
@@ -48,7 +50,8 @@ pub async fn get_applicants(
 }
 
 pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>> {
-    let rows = sqlx::query(
+    // 1. Получаем базовые цифры из истории (как было)
+    let history_rows = sqlx::query(
         r#"
         SELECT program_code, passing_score, places_filled
         FROM history_stats
@@ -58,22 +61,49 @@ pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>>
         .fetch_all(&state.db)
         .await
         .unwrap_or_default();
+
+    // 2. Получаем ВСЕХ абитуриентов для подсчета приоритетов
+    // (В реальном проде это делается одним SQL запросом с CASE/GROUP BY, но для понятности сделаем в коде)
+    let applicants = db::get_applicants(&state.db, 100000, 0, None).await.unwrap_or_default();
+
     let limits = HashMap::from([
         ("ПМ", 40), ("ИВТ", 50), ("ИТСС", 30), ("ИБ", 20)
     ]);
 
     let mut result = Vec::new();
+    let codes = vec!["ПМ", "ИВТ", "ИТСС", "ИБ"];
 
-    for (code, &total) in limits.iter() {
-        let stat_row = rows.iter().find(|r| r.get::<String, _>("program_code") == *code);
-
+    for code in codes {
+        // Базовая статистика
+        let stat_row = history_rows.iter().find(|r| r.get::<String, _>("program_code") == code);
         let (filled, score) = match stat_row {
             Some(row) => (row.get::<i32, _>("places_filled"), row.get::<i32, _>("passing_score")),
             None => (0, 0),
         };
+        let total_places = *limits.get(code).unwrap_or(&0) as i32;
+
+        // Подсчет приоритетов
+        let mut count_p = [0; 4];
+        let mut enrol_p = [0; 4];
+
+        for app in &applicants {
+            // Ищем, на какой позиции у абитуриента стоит текущая программа (code)
+            if let Some(idx) = app.priorities.iter().position(|p| p == code) {
+                if idx < 4 {
+                    count_p[idx] += 1;
+                    
+                    // Если он зачислен именно на эту программу
+                    if let Some(curr) = &app.current_program {
+                        if curr == code {
+                            enrol_p[idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
 
         result.push(ProgramStats {
-            program_name: match *code {
+            program_name: match code {
                 "ПМ" => "Прикладная математика".to_string(),
                 "ИВТ" => "Информатика и ВТ".to_string(),
                 "ИТСС" => "Связь и телекоммуникации".to_string(),
@@ -81,10 +111,20 @@ pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>>
                 _ => code.to_string(),
             },
             program_code: code.to_string(),
-            places_total: total,
+            places_total: total_places,
             places_filled: filled,
             passing_score: score,
-            is_shortage: filled < total,
+            is_shortage: filled < total_places,
+            
+            // Заполняем новые поля
+            count_priority_1: count_p[0],
+            count_priority_2: count_p[1],
+            count_priority_3: count_p[2],
+            count_priority_4: count_p[3],
+            enrolled_priority_1: enrol_p[0],
+            enrolled_priority_2: enrol_p[1],
+            enrolled_priority_3: enrol_p[2],
+            enrolled_priority_4: enrol_p[3],
         });
     }
 
@@ -96,7 +136,7 @@ pub async fn import_data(
     mut multipart: Multipart
 ) -> Json<ImportResponse> {
     
-    let prev_count = db::count_applicants(&state.db).await.unwrap_or(0);
+    let prev_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
     let mut stats = ImportStats { processed: 0 };
     let mut processed_external_ids: Vec<i32> = Vec::new();
     let mut report_date = Local::now().format("%Y-%m-%d").to_string();
@@ -106,8 +146,10 @@ pub async fn import_data(
 
         if name == "date" {
             if let Ok(text) = field.text().await {
-                if !text.is_empty() {
+                if let Ok(_) = chrono::NaiveDate::parse_from_str(&text, "%Y-%m-%d") {
                     report_date = text;
+                } else {
+                    println!("Warning: Invalid date format received: '{}'. Using current date.", text);
                 }
             }
             continue;
@@ -214,4 +256,61 @@ pub async fn get_history(State(state): State<AppState>) -> Json<HashMap<String, 
     }
 
     Json(history)
+}
+
+pub async fn get_intersections(State(state): State<AppState>) -> Json<IntersectionStats> {
+    let applicants = db::get_applicants(&state.db, 100000, 0, None)
+    .await
+    .unwrap_or_default();
+
+    let mut stats = IntersectionStats {
+        pm_ivt: 0, pm_itss: 0, pm_ib: 0,
+        ivt_itss: 0, ivt_ib: 0, itss_ib: 0,
+        pm_ivt_itss: 0, pm_ivt_ib: 0, ivt_itss_ib: 0, pm_itss_ib: 0,
+        all_four: 0,
+    };
+
+    for app in applicants {
+        let mut codes = app.priorities.clone();
+        codes.sort();
+        codes.dedup();
+
+        // --- ИСПРАВЛЕНИЕ ТУТ ---
+        // Превращаем Vec<String> в Vec<&str>, чтобы работало сравнение с "ПМ", "ИВТ" и т.д.
+        let codes_refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
+
+        match codes_refs.as_slice() {
+            // --- ПАРЫ (2 ОП) ---
+            ["ИВТ", "ПМ"] => stats.pm_ivt += 1,
+            ["ИТСС", "ПМ"] => stats.pm_itss += 1,
+            ["ИБ", "ПМ"] => stats.pm_ib += 1,
+            ["ИВТ", "ИТСС"] => stats.ivt_itss += 1,
+            ["ИБ", "ИВТ"] => stats.ivt_ib += 1,
+            ["ИБ", "ИТСС"] => stats.itss_ib += 1,
+
+            // --- ТРОЙКИ (3 ОП) ---
+            ["ИВТ", "ИТСС", "ПМ"] => stats.pm_ivt_itss += 1,
+            ["ИБ", "ИВТ", "ПМ"] => stats.pm_ivt_ib += 1,
+            ["ИБ", "ИВТ", "ИТСС"] => stats.ivt_itss_ib += 1,
+            ["ИБ", "ИТСС", "ПМ"] => stats.pm_itss_ib += 1,
+
+            // --- ЧЕТВЕРКА (4 ОП) ---
+            ["ИБ", "ИВТ", "ИТСС", "ПМ"] => stats.all_four += 1,
+            
+            _ => {} 
+        }
+    }
+
+    Json(stats)
+}
+
+pub async fn clear_database(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Очищаем таблицы абитуриентов и истории
+    let _ = sqlx::query("DELETE FROM applicants").execute(&state.db).await;
+    let _ = sqlx::query("DELETE FROM history_stats").execute(&state.db).await;
+    
+    // Сбрасываем счетчик автоинкремента (для красоты ID)
+    let _ = sqlx::query("DELETE FROM sqlite_sequence WHERE name='applicants'").execute(&state.db).await;
+
+    Json(serde_json::json!({ "status": "ok", "message": "База данных очищена" }))
 }

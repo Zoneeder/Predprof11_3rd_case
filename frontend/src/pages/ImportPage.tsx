@@ -4,6 +4,8 @@ import { Dropzone } from "@mantine/dropzone";
 import { notifications } from "@mantine/notifications";
 import { IconUpload, IconX, IconAlertTriangle } from "@tabler/icons-react";
 import { useImport } from "../api/hooks";
+import { IconTrash } from "@tabler/icons-react"; // Не забудь импортировать
+import { clearDatabase } from "../api/api"; // Импорт функции
 
 import type { ImportResponse } from "../api/types";
 
@@ -63,9 +65,30 @@ export function ImportPage() {
     }
   };
 
+  const handleClear = async () => {
+    if (!confirm("Вы уверены? Это удалит ВСЕ данные.")) return;
+    try {
+      await clearDatabase();
+      notifications.show({ title: "Успех", message: "База данных полностью очищена", color: "green" });
+    } catch (e) {
+      notifications.show({ title: "Ошибка", message: "Не удалось очистить БД", color: "red" });
+    }
+  };
+
   return (
     <Stack gap="md">
       <Title order={2}>Import</Title>
+
+      <Card withBorder radius="lg" p="lg" mt="md" style={{ borderColor: 'red' }}>
+        <Group justify="space-between">
+          <Stack gap={0}>
+            <Text fw={700}>Удаление всех абитуриентов и истории статистики</Text>
+          </Stack>
+          <Button color="red" leftSection={<IconTrash size={18} />} onClick={handleClear}>
+            Очистить базу данных
+          </Button>
+        </Group>
+      </Card>
 
       <Card withBorder radius="lg" p="lg">
         <Stack gap="md">
@@ -74,11 +97,13 @@ export function ImportPage() {
           </Text>
 
           <TextInput
+            type="date"
             label="Дата списка (для истории)"
             description="Введите дату, за которую выгружен этот список (например, 2024-08-01)"
             placeholder="YYYY-MM-DD"
             value={date}
             onChange={(ev) => setDate(ev.currentTarget.value)}
+            required
           />
 
           <Dropzone
