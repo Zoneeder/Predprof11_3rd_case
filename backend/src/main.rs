@@ -54,6 +54,8 @@ async fn main() {
         .route("/api/applicants", get(handlers::get_applicants))
         .route("/api/statistics", get(handlers::get_stats))
         .route("/api/history", get(handlers::get_history))
+        .route("/api/clear", post(handlers::clear_db))
+        .route("/api/intersections", get(handlers::get_intersections))
         .fallback(assets::static_handler)
         .layer(cors)
         .with_state(state);

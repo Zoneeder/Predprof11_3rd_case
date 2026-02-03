@@ -39,7 +39,18 @@ pub struct ProgramStats {
     pub places_total: i32,
     pub places_filled: i32,
     pub passing_score: i32,
-    pub is_shortage: bool
+    pub is_shortage: bool,
+
+    // Детализация по приоритетам
+    pub count_priority_1: i32,
+    pub count_priority_2: i32,
+    pub count_priority_3: i32,
+    pub count_priority_4: i32,
+    
+    pub enrolled_priority_1: i32,
+    pub enrolled_priority_2: i32,
+    pub enrolled_priority_3: i32,
+    pub enrolled_priority_4: i32,
 }
 
 #[derive(Serialize)]
@@ -81,4 +92,20 @@ pub struct CsvApplicant {
 
     #[serde(alias = "priorities", alias = "Приоритет ОП", alias = "Приоритеты")]
     pub priorities: String,
+}
+
+#[derive(Serialize)]
+pub struct IntersectionStats {
+    pub pm_ivt: i32,
+    pub pm_itss: i32,
+    pub pm_ib: i32,
+    pub ivt_itss: i32,
+    pub ivt_ib: i32,
+    pub itss_ib: i32,
+
+    pub pm_ivt_itss: i32,
+    pub pm_ivt_ib: i32,
+    pub ivt_itss_ib: i32,
+    pub pm_itss_ib: i32,
+    pub all_four: i32,
 }

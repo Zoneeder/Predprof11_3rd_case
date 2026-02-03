@@ -14,6 +14,7 @@ use crate::db::NewApplicant;
 pub struct PaginationQuery {
     pub page: Option<usize>,
     pub limit: Option<usize>,
+    pub search: Option<String>,
 }
 
 pub async fn get_applicants(
@@ -24,14 +25,16 @@ pub async fn get_applicants(
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(50) as i32;
     let offset = ((page - 1) * (limit as usize)) as i32;
-    let applicants = db::get_applicants(&state.db, limit, offset)
+    let search_term = params.search.clone();
+
+    let applicants = db::get_applicants(&state.db, limit, offset, search_term.clone())
         .await
         .unwrap_or_else(|e| {
             println!("DB Error: {}", e);
             vec![]
         });
 
-    let total_items = db::count_applicants(&state.db)
+    let total_items = db::count_applicants(&state.db, search_term)
         .await
         .unwrap_or(0) as usize;
 
@@ -48,47 +51,8 @@ pub async fn get_applicants(
 }
 
 pub async fn get_stats(State(state): State<AppState>) -> Json<Vec<ProgramStats>> {
-    let rows = sqlx::query(
-        r#"
-        SELECT program_code, passing_score, places_filled
-        FROM history_stats
-        WHERE record_date = (SELECT MAX(record_date) FROM history_stats)
-        "#
-    )
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
-    let limits = HashMap::from([
-        ("ПМ", 40), ("ИВТ", 50), ("ИТСС", 30), ("ИБ", 20)
-    ]);
-
-    let mut result = Vec::new();
-
-    for (code, &total) in limits.iter() {
-        let stat_row = rows.iter().find(|r| r.get::<String, _>("program_code") == *code);
-
-        let (filled, score) = match stat_row {
-            Some(row) => (row.get::<i32, _>("places_filled"), row.get::<i32, _>("passing_score")),
-            None => (0, 0),
-        };
-
-        result.push(ProgramStats {
-            program_name: match *code {
-                "ПМ" => "Прикладная математика".to_string(),
-                "ИВТ" => "Информатика и ВТ".to_string(),
-                "ИТСС" => "Связь и телекоммуникации".to_string(),
-                "ИБ" => "Информационная безопасность".to_string(),
-                _ => code.to_string(),
-            },
-            program_code: code.to_string(),
-            places_total: total,
-            places_filled: filled,
-            passing_score: score,
-            is_shortage: filled < total,
-        });
-    }
-
-    Json(result)
+    let stats = logic::get_detailed_stats(&state.db).await;
+    Json(stats)
 }
 
 pub async fn import_data(
@@ -96,7 +60,7 @@ pub async fn import_data(
     mut multipart: Multipart
 ) -> Json<ImportResponse> {
 
-    let prev_count = db::count_applicants(&state.db).await.unwrap_or(0);
+    let prev_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
     let mut stats = ImportStats { processed: 0 };
     let mut report_date = Local::now().format("%Y-%m-%d").to_string();
     
@@ -175,19 +139,21 @@ pub async fn import_data(
         logic::recalculate_admissions(&pool_clone, &date_clone).await;
     });
 
-    let new_count = db::count_applicants(&state.db).await.unwrap_or(0);
-    let mut warning = None;
+    let new_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
+    // let mut warning = None;
 
-    if prev_count > 0 {
-        let diff = (prev_count - new_count).abs();
-        let change_percent = (diff as f64 / prev_count as f64) * 100.0;
-        if change_percent > 10.0 {
-            warning = Some(format!(
-                "Изменение объема данных на {:.1}% (было: {}, стало: {})",
-                change_percent, prev_count, new_count
-            ));
-        }
-    }
+    // Logic disabled requested by user
+    // if prev_count > 0 {
+    //     let diff = (prev_count - new_count).abs();
+    //     let change_percent = (diff as f64 / prev_count as f64) * 100.0;
+    //     if change_percent > 10.0 {
+    //         warning = Some(format!(
+    //             "Изменение объема данных на {:.1}% (было: {}, стало: {})",
+    //             change_percent, prev_count, new_count
+    //         ));
+    //     }
+    // }
+    let warning: Option<String> = None;
 
     Json(ImportResponse {
         status: "success".to_string(),
@@ -219,4 +185,30 @@ pub async fn get_history(State(state): State<AppState>) -> Json<HashMap<String, 
     }
 
     Json(history)
+}
+
+pub async fn clear_db(State(state): State<AppState>) -> axum::http::StatusCode {
+    match db::clear_all(&state.db).await {
+        Ok(_) => axum::http::StatusCode::OK,
+        Err(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+pub async fn get_intersections(State(state): State<AppState>) -> Json<Box<IntersectionStats>> {
+    let counts = logic::calculate_intersections(&state.db).await;
+    
+    Json(Box::new(IntersectionStats {
+        pm_ivt: *counts.get("pm_ivt").unwrap_or(&0) as i32,
+        pm_itss: *counts.get("pm_itss").unwrap_or(&0) as i32,
+        pm_ib: *counts.get("pm_ib").unwrap_or(&0) as i32,
+        ivt_itss: *counts.get("ivt_itss").unwrap_or(&0) as i32,
+        ivt_ib: *counts.get("ivt_ib").unwrap_or(&0) as i32,
+        itss_ib: *counts.get("itss_ib").unwrap_or(&0) as i32,
+
+        pm_ivt_itss: *counts.get("pm_ivt_itss").unwrap_or(&0) as i32,
+        pm_ivt_ib: *counts.get("pm_ivt_ib").unwrap_or(&0) as i32,
+        ivt_itss_ib: *counts.get("ivt_itss_ib").unwrap_or(&0) as i32,
+        pm_itss_ib: *counts.get("pm_itss_ib").unwrap_or(&0) as i32,
+        all_four: *counts.get("all_four").unwrap_or(&0) as i32,
+    }))
 }

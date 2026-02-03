@@ -5,21 +5,31 @@ pub async fn get_applicants(
     pool: &SqlitePool,
     limit: i32,
     offset: i32,
+    search: Option<String>,
 ) -> Result<Vec<Applicant>, sqlx::Error> {
-    let rows = sqlx::query(
+    
+    let mut builder: QueryBuilder<Sqlite> = QueryBuilder::new(
         r#"
         SELECT id, full_name, agreed, total_score, 
                score_math, score_rus, score_phys, score_achieve, 
                priorities, current_program
         FROM applicants
-        ORDER BY total_score DESC
-        LIMIT ? OFFSET ?
-        "#,
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await?;
+        "#
+    );
+
+    if let Some(s) = &search {
+        if !s.is_empty() {
+             builder.push(" WHERE full_name LIKE ");
+             builder.push_bind(format!("%{}%", s));
+        }
+    }
+
+    builder.push(" ORDER BY total_score DESC LIMIT ");
+    builder.push_bind(limit);
+    builder.push(" OFFSET ");
+    builder.push_bind(offset);
+
+    let rows = builder.build().fetch_all(pool).await?;
 
     let applicants = rows
         .into_iter()
@@ -47,10 +57,17 @@ pub async fn get_applicants(
     Ok(applicants)
 }
 
-pub async fn count_applicants(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM applicants")
-        .fetch_one(pool)
-        .await?;
+pub async fn count_applicants(pool: &SqlitePool, search: Option<String>) -> Result<i64, sqlx::Error> {
+    let mut builder: QueryBuilder<Sqlite> = QueryBuilder::new("SELECT COUNT(*) FROM applicants");
+
+    if let Some(s) = &search {
+        if !s.is_empty() {
+             builder.push(" WHERE full_name LIKE ");
+             builder.push_bind(format!("%{}%", s));
+        }
+    }
+
+    let count: (i64,) = builder.build_query_as().fetch_one(pool).await?;
     Ok(count.0)
 }
 
@@ -205,5 +222,15 @@ pub async fn delete_missing_applicants(
     let query = builder.build();
     query.execute(pool).await?;
 
+    Ok(())
+}
+
+pub async fn clear_all(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("DELETE FROM applicants").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM history_stats").execute(&mut *tx).await?;
+
+    tx.commit().await?;
     Ok(())
 }

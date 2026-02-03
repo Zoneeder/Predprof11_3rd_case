@@ -47,6 +47,17 @@ export interface StatsRow {
   places_filled: number;
   passing_score: number;
   is_shortage: boolean; // Флаг недобора
+
+  // Детализация по приоритетам
+  count_priority_1: number;
+  count_priority_2: number;
+  count_priority_3: number;
+  count_priority_4: number;
+
+  enrolled_priority_1: number;
+  enrolled_priority_2: number;
+  enrolled_priority_3: number;
+  enrolled_priority_4: number;
 }
 
 export type StatisticsResponse = StatsRow[];
@@ -55,6 +66,21 @@ export type StatisticsResponse = StatsRow[];
 export interface HistoryPoint {
   date: string;
   score: number;
+}
+
+export interface IntersectionStats {
+  pm_ivt: number;
+  pm_itss: number;
+  pm_ib: number;
+  ivt_itss: number;
+  ivt_ib: number;
+  itss_ib: number;
+
+  pm_ivt_itss: number;
+  pm_ivt_ib: number;
+  ivt_itss_ib: number;
+  pm_itss_ib: number;
+  all_four: number;
 }
 
 export type HistoryResponse = Record<string, HistoryPoint[]>;
