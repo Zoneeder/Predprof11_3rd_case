@@ -140,19 +140,7 @@ pub async fn import_data(
     });
 
     let new_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
-    // let mut warning = None;
-
-    // Logic disabled requested by user
-    // if prev_count > 0 {
-    //     let diff = (prev_count - new_count).abs();
-    //     let change_percent = (diff as f64 / prev_count as f64) * 100.0;
-    //     if change_percent > 10.0 {
-    //         warning = Some(format!(
-    //             "Изменение объема данных на {:.1}% (было: {}, стало: {})",
-    //             change_percent, prev_count, new_count
-    //         ));
-    //     }
-    // }
+    
     let warning: Option<String> = None;
 
     Json(ImportResponse {

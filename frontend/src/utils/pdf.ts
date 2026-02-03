@@ -4,7 +4,6 @@ import html2canvas from "html2canvas";
 import type { Applicant, StatsRow } from "../api/types";
 
 // Хелпер для загрузки шрифта
-// Хелпер для загрузки шрифта
 async function loadFont(doc: jsPDF, path: string, fontName: string) {
   try {
     const res = await fetch(path);
@@ -44,7 +43,6 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
   const doc = new jsPDF();
 
   // 1. Подключаем русский шрифт
-  // Файл должен лежать в public/fonts/Roboto-Regular.ttf
   await loadFont(doc, "/fonts/Roboto-Regular.ttf", "Roboto");
 
   // 2. Заголовок
@@ -57,9 +55,7 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
 
   let currentY = 45;
 
-  // ---------------------------------------------------------
   // 4. График
-  // ---------------------------------------------------------
   if (chartElement) {
     // Проверяем, влезет ли заголовок графика
     if (currentY + 10 > 280) { doc.addPage(); currentY = 20; }
@@ -88,9 +84,7 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
     }
   }
 
-  // ---------------------------------------------------------
-  // 5. Таблица статистики (по ТЗ п.14.e)
-  // ---------------------------------------------------------
+  // 5. Таблица статистики
   // Проверяем место на странице
   if (currentY + 60 > 280) {
     doc.addPage();
@@ -113,7 +107,7 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
 
   const bodyData = [
     [
-      { content: "Общее кол-во заявлений", colSpan: 1, styles: { fontStyle: 'bold' as const } }, // Fix type error
+      { content: "Общее кол-во заявлений", colSpan: 1, styles: { fontStyle: 'bold' as const } },
       { content: totalUnique.toString(), colSpan: 4, styles: { halign: 'center' as const } }
     ],
     [
@@ -155,14 +149,13 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
   // @ts-ignore
   currentY = doc.lastAutoTable.finalY + 15;
 
-  // Дополнительная таблица проходных баллов
   const passingScoresBody = [
     ["Проходной балл"],
     [
-      (pm?.places_filled ?? 0) < (pm?.places_total ?? 0) ? "НЕДОБОР" : pm?.passing_score,
-      (ivt?.places_filled ?? 0) < (ivt?.places_total ?? 0) ? "НЕДОБОР" : ivt?.passing_score,
-      (itss?.places_filled ?? 0) < (itss?.places_total ?? 0) ? "НЕДОБОР" : itss?.passing_score,
-      (ib?.places_filled ?? 0) < (ib?.places_total ?? 0) ? "НЕДОБОР" : ib?.passing_score,
+      (pm?.places_filled ?? 0) < (pm?.places_total ?? 0) ? "НЕДОБОР" : (pm?.passing_score ?? 0),
+      (ivt?.places_filled ?? 0) < (ivt?.places_total ?? 0) ? "НЕДОБОР" : (ivt?.passing_score ?? 0),
+      (itss?.places_filled ?? 0) < (itss?.places_total ?? 0) ? "НЕДОБОР" : (itss?.passing_score ?? 0),
+      (ib?.places_filled ?? 0) < (ib?.places_total ?? 0) ? "НЕДОБОР" : (ib?.passing_score ?? 0),
     ]
   ];
 
@@ -187,9 +180,7 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
   // @ts-ignore
   currentY = doc.lastAutoTable.finalY + 15;
 
-  // ---------------------------------------------------------
   // 6. Списки зачисленных
-  // ---------------------------------------------------------
   const admitted = applicants.filter(a => a.current_program);
   const programs = ["ПМ", "ИВТ", "ИТСС", "ИБ"];
 
@@ -203,10 +194,8 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
     const list = admitted.filter(a => a.current_program === code);
     if (list.length === 0) continue;
 
-    // Сортировка по баллу
     list.sort((a, b) => b.total_score - a.total_score);
 
-    // Если мало места для заголовка таблицы
     if (currentY > 260) {
       doc.addPage();
       currentY = 20;
@@ -227,7 +216,7 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
       head: [["ID", "ФИО", "Сумма баллов"]],
       body: listBody,
       styles: {
-        font: "Roboto", // ВАЖНО
+        font: "Roboto",
         fontSize: 9
       },
       headStyles: { font: "Roboto" },

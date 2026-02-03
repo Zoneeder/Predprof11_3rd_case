@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 use std::collections::{HashMap};
-// use chrono::Local; // <-- Больше не нужно, если не используем текущую дату по дефолту
+// use chrono::Local;
 use crate::db;
 
 fn get_program_limits() -> HashMap<String, usize> {
@@ -12,7 +12,6 @@ fn get_program_limits() -> HashMap<String, usize> {
     map
 }
 
-// Добавили аргумент `date`
 pub async fn recalculate_admissions(pool: &SqlitePool, date: &str) {
     if let Err(e) = db::reset_admission_status(pool).await {
         println!("Ошибка сброса статусов: {}", e);
@@ -56,7 +55,7 @@ pub async fn recalculate_admissions(pool: &SqlitePool, date: &str) {
             }
         }
     }
-    // Передаем дату дальше
+
     save_statistics(pool, &limits, &admission_lists, date).await;
 }
 
@@ -64,10 +63,8 @@ async fn save_statistics(
     pool: &SqlitePool,
     limits: &HashMap<String, usize>,
     admission_lists: &HashMap<String, Vec<i32>>,
-    date: &str // <-- Принимаем дату аргументом
+    date: &str
 ) {
-    // let today = Local::now().format("%Y-%m-%d").to_string(); // <-- УБИРАЕМ ЭТО
-
     for (prog_code, admitted_ids) in admission_lists {
         let total_places = limits.get(prog_code).unwrap_or(&0);
         let filled = admitted_ids.len();
@@ -93,7 +90,7 @@ async fn save_statistics(
                 places_filled = excluded.places_filled
             "#
         )
-            .bind(date) // <-- Используем переданную дату
+            .bind(date)
             .bind(prog_code)
             .bind(passing_score)
             .bind(filled as i32)

@@ -107,7 +107,7 @@ export function DashboardPage() {
     }
   };
 
-  // ... (весь код до return оставляем как был)
+
 
   return (
     <Stack gap="md" h="100%">
@@ -139,7 +139,7 @@ export function DashboardPage() {
         <Grid.Col span={{ base: 12, lg: 8 }}>
           <Stack gap="md">
 
-            {/* Поиск перенесли сюда, чтобы он был над таблицами или можно оставить вверху */}
+            {/* Search Input */}
             <TextInput
               label="Поиск абитуриента"
               placeholder="Фамилия..."
@@ -157,7 +157,7 @@ export function DashboardPage() {
               </Group>
               <div ref={chartRef} style={{
                 width: "100%",
-                height: 300, // Чуть уменьшил высоту, чтобы влезало
+                height: 300,
                 padding: 10,
                 background: isDark ? '#1A1B1E' : 'white',
                 borderRadius: 8
@@ -190,7 +190,7 @@ export function DashboardPage() {
                 <Text fw={700}>Статистика по программам</Text>
                 {statsQ.isFetching && <Loader size="sm" />}
               </Group>
-              {/* ... (Тут твоя таблица статистики, код не меняется, просто копирую структуру) ... */}
+              {/* Statistics Table */}
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -219,7 +219,6 @@ export function DashboardPage() {
             <Card withBorder radius="lg" p="lg">
               <Text fw={700} mb="md">Детализация (Приоритеты)</Text>
               <Table striped highlightOnHover withTableBorder>
-                {/* ... Твой код заголовков таблицы приоритетов ... */}
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th rowSpan={2}>Программа</Table.Th>
@@ -245,8 +244,7 @@ export function DashboardPage() {
 
             {/* Пересечения (Матрицы) */}
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-              {/* Код матриц пересечений, который мы писали ранее, вставляем сюда */}
-              {/* Я сокращу для примера, но ты оставь свой полный код */}
+              {/* Intersection Matrices */}
               <Card withBorder radius="lg" p="lg">
                 <Text fw={700} size="sm">Пересечения (2 ОП)</Text>
                 <Table withTableBorder striped>
@@ -279,7 +277,7 @@ export function DashboardPage() {
 
         {/* === ПРАВАЯ КОЛОНКА (СПИСОК АБИТУРИЕНТОВ) === */}
         <Grid.Col span={{ base: 12, lg: 4 }}>
-          <Card withBorder radius="lg" p="0" h="calc(100vh - 140px)"> {/* Фиксированная высота */}
+          <Card withBorder radius="lg" p="0" h="calc(100vh - 140px)">
 
             {/* Шапка карточки */}
             <Stack p="md" gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
