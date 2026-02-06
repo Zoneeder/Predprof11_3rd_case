@@ -28,7 +28,9 @@ export async function getApplicants(params: {
   page: number;
   limit: number;
   search?: string;
-  filter_program?: string;
+  agreed?: boolean;
+  program?: string;
+  min_score?: number;
 }) {
   const res = await http.get<ApplicantsResponse>("/api/applicants", { params });
   return res.data;

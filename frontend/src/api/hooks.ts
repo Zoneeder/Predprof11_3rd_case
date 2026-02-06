@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getApplicants, getHistory, getStatistics, importList } from "./api";
 import { getIntersections } from "./api";
 
@@ -6,11 +6,14 @@ export function useApplicants(params: {
   page: number;
   limit: number;
   search?: string;
-  filter_program?: string;
+  agreed?: boolean;
+  program?: string;
+  min_score?: number;
 }) {
   return useQuery({
     queryKey: ["applicants", params],
     queryFn: () => getApplicants(params),
+    placeholderData: keepPreviousData,
   });
 }
 

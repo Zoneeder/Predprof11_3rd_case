@@ -15,6 +15,9 @@ pub struct PaginationQuery {
     pub page: Option<usize>,
     pub limit: Option<usize>,
     pub search: Option<String>,
+    pub agreed: Option<bool>,
+    pub program: Option<String>,
+    pub min_score: Option<i32>,
 }
 
 pub async fn get_applicants(
@@ -27,14 +30,28 @@ pub async fn get_applicants(
     let offset = ((page - 1) * (limit as usize)) as i32;
     let search_term = params.search.clone();
 
-    let applicants = db::get_applicants(&state.db, limit, offset, search_term.clone())
+    let applicants = db::get_applicants(
+        &state.db, 
+        limit, 
+        offset, 
+        search_term.clone(),
+        params.agreed,
+        params.program.clone(),
+        params.min_score
+    )
         .await
         .unwrap_or_else(|e| {
             println!("DB Error: {}", e);
             vec![]
         });
 
-    let total_items = db::count_applicants(&state.db, search_term)
+    let total_items = db::count_applicants(
+        &state.db, 
+        search_term,
+        params.agreed,
+        params.program,
+        params.min_score
+    )
         .await
         .unwrap_or(0) as usize;
 
@@ -60,7 +77,7 @@ pub async fn import_data(
     mut multipart: Multipart
 ) -> Json<ImportResponse> {
 
-    let prev_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
+    let prev_count = db::count_applicants(&state.db, None, None, None, None).await.unwrap_or(0);
     let mut stats = ImportStats { processed: 0 };
     let mut report_date = Local::now().format("%Y-%m-%d").to_string();
     
@@ -139,7 +156,7 @@ pub async fn import_data(
         logic::recalculate_admissions(&pool_clone, &date_clone).await;
     });
 
-    let new_count = db::count_applicants(&state.db, None).await.unwrap_or(0);
+    let new_count = db::count_applicants(&state.db, None, None, None, None).await.unwrap_or(0);
     
     let warning: Option<String> = None;
 

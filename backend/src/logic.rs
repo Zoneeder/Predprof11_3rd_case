@@ -18,7 +18,7 @@ pub async fn recalculate_admissions(pool: &SqlitePool, date: &str) {
         return;
     }
 
-    let applicants = match db::get_applicants(pool, 100000, 0, None).await {
+    let applicants = match db::get_applicants(pool, 100000, 0, None, None, None, None).await {
         Ok(list) => list,
         Err(e) => {
             println!("Ошибка получения списка: {}", e);
@@ -100,7 +100,7 @@ async fn save_statistics(
 }
 
 pub async fn calculate_intersections(pool: &SqlitePool) -> HashMap<String, usize> {
-    let applicants = db::get_applicants(pool, 100000, 0, None).await.unwrap_or_default();
+    let applicants = db::get_applicants(pool, 100000, 0, None, None, None, None).await.unwrap_or_default();
     
     // Инициализируем счетчики нулями
     let mut counts = HashMap::new();
@@ -141,7 +141,7 @@ pub async fn calculate_intersections(pool: &SqlitePool) -> HashMap<String, usize
 }
 
 pub async fn get_detailed_stats(pool: &SqlitePool) -> Vec<crate::models::ProgramStats> {
-    let applicants = db::get_applicants(pool, 100000, 0, None).await.unwrap_or_default();
+    let applicants = db::get_applicants(pool, 100000, 0, None, None, None, None).await.unwrap_or_default();
     let limits = get_program_limits();
     
     // Подготовка структур для подсчета
