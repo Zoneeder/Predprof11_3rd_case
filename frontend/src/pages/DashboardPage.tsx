@@ -111,7 +111,6 @@ export function DashboardPage() {
 
   return (
     <Stack gap="md" h="100%">
-      {/* --- ШАПКА И ПОИСК (Оставляем сверху) --- */}
       <Group justify="space-between" align="flex-end">
         <Title order={2}>Dashboard</Title>
         <Button
@@ -124,7 +123,7 @@ export function DashboardPage() {
         </Button>
       </Group>
 
-      {/* Верхние карточки статистики (Оставляем на всю ширину) */}
+      {/* Верхние карточки статистики*/}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
         <StatCard title="Всего мест" value={top.placesTotal} loading={statsQ.isLoading} />
         <StatCard title="Занято мест" value={top.placesFilled} loading={statsQ.isLoading} />
@@ -132,14 +131,9 @@ export function DashboardPage() {
         <StatCard title="Программ" value={top.programs} loading={statsQ.isLoading} />
       </SimpleGrid>
 
-      {/* --- ОСНОВНАЯ СЕТКА (РАЗДЕЛЕНИЕ ЭКРАНА) --- */}
       <Grid gutter="md">
-
-        {/* === ЛЕВАЯ КОЛОНКА (ГРАФИКИ И АНАЛИТИКА) === */}
         <Grid.Col span={{ base: 12, lg: 8 }}>
           <Stack gap="md">
-
-            {/* Search Input */}
             <TextInput
               label="Поиск абитуриента"
               placeholder="Фамилия..."
@@ -190,7 +184,6 @@ export function DashboardPage() {
                 <Text fw={700}>Статистика по программам</Text>
                 {statsQ.isFetching && <Loader size="sm" />}
               </Group>
-              {/* Statistics Table */}
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
@@ -244,7 +237,6 @@ export function DashboardPage() {
 
             {/* Пересечения (Матрицы) */}
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-              {/* Intersection Matrices */}
               <Card withBorder radius="lg" p="lg">
                 <Text fw={700} size="sm">Пересечения (2 ОП)</Text>
                 <Table withTableBorder striped>
@@ -275,11 +267,10 @@ export function DashboardPage() {
           </Stack>
         </Grid.Col>
 
-        {/* === ПРАВАЯ КОЛОНКА (СПИСОК АБИТУРИЕНТОВ) === */}
+        {/*СПИСОК АБИТУРИЕНТОВ*/}
         <Grid.Col span={{ base: 12, lg: 4 }}>
           <Card withBorder radius="lg" p="0" h="calc(100vh - 140px)">
 
-            {/* Шапка карточки */}
             <Stack p="md" gap="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
               <Group justify="space-between">
                 <Text fw={700}>Абитуриенты</Text>
@@ -293,7 +284,6 @@ export function DashboardPage() {
               </Group>
             </Stack>
 
-            {/* Скроллируемая область для таблицы */}
             <ScrollArea h="100%" type="auto" offsetScrollbars>
               <Table striped highlightOnHover verticalSpacing="xs">
                 <Table.Thead style={{ position: 'sticky', top: 0, background: isDark ? '#25262b' : 'white', zIndex: 1 }}>
@@ -307,22 +297,33 @@ export function DashboardPage() {
                     <Table.Tr key={a.id}>
                       <Table.Td>
                         <Text size="sm" fw={500} style={{ lineHeight: 1.2 }}>{a.full_name}</Text>
-                        <Text size="xs" c="dimmed" mb={4}>ID: {a.id} {a.agreed ? '(Согласие)' : ''}</Text>
+                        
+                        <Text size="xs" c={a.agreed ? "green" : "dimmed"} fw={a.agreed ? 700 : 400} mb={4}>
+                          ID: {a.id} {a.agreed ? '(Согласие)' : ''}
+                        </Text>
 
-                        {/* Каскад приоритетов (Бейджи) */}
                         <Group gap={4}>
-                          {a.priorities.map((prog) => {
+                          {a.priorities.map((prog, idx) => {
                             const isEnrolled = a.current_program === prog;
                             let color = "gray";
                             let variant = "outline";
-                            if (isEnrolled) { color = "blue"; variant = "filled"; }
-                            return <Badge key={prog} color={color} variant={variant} size="xs">{prog}</Badge>
+                            
+                            if (isEnrolled) { 
+                              color = "blue"; 
+                              variant = "filled"; 
+                            }
+                            
+                            return (
+                              <Badge key={prog} color={color} variant={variant} size="xs">
+                                {idx + 1}. {prog}
+                              </Badge>
+                            );
                           })}
                         </Group>
                       </Table.Td>
+
                       <Table.Td style={{ textAlign: 'right', verticalAlign: 'top' }}>
                         <Text fw={700}>{a.total_score}</Text>
-                        {/* Баллы подробно */}
                         <Stack gap={0} mt={4}>
                           <Text size="10px" c="dimmed">М: {a.scores.math}</Text>
                           <Text size="10px" c="dimmed">Р: {a.scores.rus}</Text>
