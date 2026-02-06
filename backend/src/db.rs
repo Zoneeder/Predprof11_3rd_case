@@ -6,6 +6,9 @@ pub async fn get_applicants(
     limit: i32,
     offset: i32,
     search: Option<String>,
+    agreed: Option<bool>,
+    program: Option<String>,
+    min_score: Option<i32>,
 ) -> Result<Vec<Applicant>, sqlx::Error> {
     
     let mut builder: QueryBuilder<Sqlite> = QueryBuilder::new(
@@ -14,14 +17,32 @@ pub async fn get_applicants(
                score_math, score_rus, score_phys, score_achieve, 
                priorities, current_program
         FROM applicants
+        WHERE 1=1
         "#
     );
 
     if let Some(s) = &search {
         if !s.is_empty() {
-             builder.push(" WHERE full_name LIKE ");
+             builder.push(" AND full_name LIKE ");
              builder.push_bind(format!("%{}%", s));
         }
+    }
+
+    if let Some(a) = agreed {
+        builder.push(" AND agreed = ");
+        builder.push_bind(a);
+    }
+
+    if let Some(p) = &program {
+        if !p.is_empty() {
+            builder.push(" AND current_program = ");
+            builder.push_bind(p);
+        }
+    }
+
+    if let Some(min) = min_score {
+        builder.push(" AND total_score >= ");
+        builder.push_bind(min);
     }
 
     builder.push(" ORDER BY total_score DESC LIMIT ");
@@ -57,14 +78,37 @@ pub async fn get_applicants(
     Ok(applicants)
 }
 
-pub async fn count_applicants(pool: &SqlitePool, search: Option<String>) -> Result<i64, sqlx::Error> {
-    let mut builder: QueryBuilder<Sqlite> = QueryBuilder::new("SELECT COUNT(*) FROM applicants");
+pub async fn count_applicants(
+    pool: &SqlitePool, 
+    search: Option<String>,
+    agreed: Option<bool>,
+    program: Option<String>,
+    min_score: Option<i32>,
+) -> Result<i64, sqlx::Error> {
+    let mut builder: QueryBuilder<Sqlite> = QueryBuilder::new("SELECT COUNT(*) FROM applicants WHERE 1=1");
 
     if let Some(s) = &search {
         if !s.is_empty() {
-             builder.push(" WHERE full_name LIKE ");
+             builder.push(" AND full_name LIKE ");
              builder.push_bind(format!("%{}%", s));
         }
+    }
+
+    if let Some(a) = agreed {
+        builder.push(" AND agreed = ");
+        builder.push_bind(a);
+    }
+
+    if let Some(p) = &program {
+        if !p.is_empty() {
+            builder.push(" AND current_program = ");
+            builder.push_bind(p);
+        }
+    }
+
+    if let Some(min) = min_score {
+        builder.push(" AND total_score >= ");
+        builder.push_bind(min);
     }
 
     let count: (i64,) = builder.build_query_as().fetch_one(pool).await?;

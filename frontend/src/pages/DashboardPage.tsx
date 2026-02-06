@@ -13,7 +13,7 @@ import {
   TextInput,
   Title,
   useComputedColorScheme,
-  Grid, ScrollArea
+  Grid, ScrollArea, Select, Checkbox
 } from "@mantine/core";
 import { IconFileTypePdf } from "@tabler/icons-react";
 import { useApplicants, useHistory, useStatistics, useIntersections } from "../api/hooks";
@@ -46,6 +46,10 @@ export function DashboardPage() {
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [filterProgram, setFilterProgram] = useState<string | null>(null);
+  const [filterAgreed, setFilterAgreed] = useState(false);
+  const [filterMinScore, setFilterMinScore] = useState<number | undefined>(undefined);
+
   const [isGeneratingPdf, setGeneratingPdf] = useState(false);
 
   // Ссылка на DOM-элемент графика для скриншота
@@ -53,7 +57,14 @@ export function DashboardPage() {
 
   const statsQ = useStatistics();
   const historyQ = useHistory();
-  const applicantsQ = useApplicants({ page, limit: 20, search });
+  const applicantsQ = useApplicants({
+    page,
+    limit: 20,
+    search,
+    agreed: filterAgreed ? true : undefined,
+    program: filterProgram ?? undefined,
+    min_score: filterMinScore
+  });
   const interQ = useIntersections();
 
   // --- ЛОГИКА ДЛЯ ВЕРХНИХ КАРТОЧЕК ---
@@ -140,9 +151,43 @@ export function DashboardPage() {
               value={search}
               onChange={(e) => {
                 setSearch(e.currentTarget.value);
-                setPage(1); // При поиске сбрасываем на 1 страницу
+                setPage(1);
               }}
             />
+
+            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+              <Select
+                label="Программа"
+                placeholder="Все"
+                data={programKeys} // from stats
+                clearable
+                value={filterProgram}
+                onChange={(v) => {
+                  setFilterProgram(v);
+                  setPage(1);
+                }}
+              />
+              <NumberInput
+                label="Мин. балл"
+                placeholder="0"
+                min={0} max={400}
+                value={filterMinScore}
+                onChange={(v) => {
+                  setFilterMinScore(v === "" ? undefined : Number(v));
+                  setPage(1);
+                }}
+              />
+              <Checkbox
+                label="Только с согласием"
+                checked={filterAgreed}
+                onChange={(e) => {
+                  setFilterAgreed(e.currentTarget.checked);
+                  setPage(1);
+                }}
+                mt={28}
+              />
+            </SimpleGrid>
+
 
             {/* График истории */}
             <Card withBorder radius="lg" p="lg">
@@ -297,7 +342,7 @@ export function DashboardPage() {
                     <Table.Tr key={a.id}>
                       <Table.Td>
                         <Text size="sm" fw={500} style={{ lineHeight: 1.2 }}>{a.full_name}</Text>
-                        
+
                         <Text size="xs" c={a.agreed ? "green" : "dimmed"} fw={a.agreed ? 700 : 400} mb={4}>
                           ID: {a.id} {a.agreed ? '(Согласие)' : ''}
                         </Text>
@@ -307,12 +352,12 @@ export function DashboardPage() {
                             const isEnrolled = a.current_program === prog;
                             let color = "gray";
                             let variant = "outline";
-                            
-                            if (isEnrolled) { 
-                              color = "blue"; 
-                              variant = "filled"; 
+
+                            if (isEnrolled) {
+                              color = "blue";
+                              variant = "filled";
                             }
-                            
+
                             return (
                               <Badge key={prog} color={color} variant={variant} size="xs">
                                 {idx + 1}. {prog}
