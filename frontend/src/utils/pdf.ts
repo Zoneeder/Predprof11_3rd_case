@@ -35,11 +35,12 @@ async function loadFont(doc: jsPDF, path: string, fontName: string) {
 interface GenerateOptions {
   stats: StatsRow[];
   applicants: Applicant[];
+  intersections?: import("../api/types").IntersectionStats;
   chartElement: HTMLElement | null;
   date: string;
 }
 
-export async function generateReport({ stats, applicants, chartElement, date }: GenerateOptions) {
+export async function generateReport({ stats, applicants, intersections, chartElement, date }: GenerateOptions) {
   const doc = new jsPDF();
 
   // 1. Подключаем русский шрифт
@@ -180,7 +181,50 @@ export async function generateReport({ stats, applicants, chartElement, date }: 
   // @ts-ignore
   currentY = doc.lastAutoTable.finalY + 15;
 
-  // 6. Списки зачисленных
+  // 6. Пересечения
+  if (intersections) {
+    if (currentY + 60 > 280) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.text("Пересечения (выбор нескольких программ)", 14, currentY);
+    currentY += 5;
+
+    const interBody = [
+      ["ПМ + ИВТ", intersections.pm_ivt, "ПМ + ИВТ + ИТСС", intersections.pm_ivt_itss],
+      ["ПМ + ИТСС", intersections.pm_itss, "ПМ + ИВТ + ИБ", intersections.pm_ivt_ib],
+      ["ПМ + ИБ", intersections.pm_ib, "ПМ + ИТСС + ИБ", intersections.pm_itss_ib],
+      ["ИВТ + ИТСС", intersections.ivt_itss, "ИВТ + ИТСС + ИБ", intersections.ivt_itss_ib],
+      ["ИВТ + ИБ", intersections.ivt_ib, "Все 4 направления", intersections.all_four],
+      ["ИТСС + ИБ", intersections.itss_ib, "", ""],
+    ];
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Пара программ", "Кол-во", "3+ программы", "Кол-во"]],
+      body: interBody,
+      styles: {
+        font: "Roboto",
+        fontSize: 10,
+        halign: 'center'
+      },
+      headStyles: {
+        fillColor: [44, 62, 80],
+        font: "Roboto"
+      },
+      columnStyles: {
+        0: { halign: 'left' },
+        2: { halign: 'left' }
+      }
+    });
+
+    // @ts-ignore
+    currentY = doc.lastAutoTable.finalY + 15;
+  }
+
+  // 7. Списки зачисленных
   const admitted = applicants.filter(a => a.current_program);
   const programs = ["ПМ", "ИВТ", "ИТСС", "ИБ"];
 

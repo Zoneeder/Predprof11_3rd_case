@@ -94,6 +94,7 @@ export function DashboardPage() {
       await generateReport({
         stats: statsQ.data,
         applicants: fullList.data,
+        intersections: interQ.data,
         chartElement: chartRef.current,
         date: lastDate,
       });
