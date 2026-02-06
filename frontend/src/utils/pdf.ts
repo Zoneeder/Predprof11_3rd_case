@@ -181,7 +181,69 @@ export async function generateReport({ stats, applicants, intersections, chartEl
   // @ts-ignore
   currentY = doc.lastAutoTable.finalY + 15;
 
-  // 6. Пересечения
+  // 6. Зачислено по приоритетам
+  if (currentY + 60 > 280) {
+    doc.addPage();
+    currentY = 20;
+  }
+
+  doc.setFontSize(14);
+  doc.text("Зачислено по приоритетам", 14, currentY);
+  currentY += 5;
+
+  const priorityBody = [
+    [
+      "ПМ",
+      pm?.enrolled_priority_1 ?? 0,
+      pm?.enrolled_priority_2 ?? 0,
+      pm?.enrolled_priority_3 ?? 0,
+      pm?.enrolled_priority_4 ?? 0,
+    ],
+    [
+      "ИВТ",
+      ivt?.enrolled_priority_1 ?? 0,
+      ivt?.enrolled_priority_2 ?? 0,
+      ivt?.enrolled_priority_3 ?? 0,
+      ivt?.enrolled_priority_4 ?? 0,
+    ],
+    [
+      "ИТСС",
+      itss?.enrolled_priority_1 ?? 0,
+      itss?.enrolled_priority_2 ?? 0,
+      itss?.enrolled_priority_3 ?? 0,
+      itss?.enrolled_priority_4 ?? 0,
+    ],
+    [
+      "ИБ",
+      ib?.enrolled_priority_1 ?? 0,
+      ib?.enrolled_priority_2 ?? 0,
+      ib?.enrolled_priority_3 ?? 0,
+      ib?.enrolled_priority_4 ?? 0,
+    ],
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [["Программа", "Пр. 1", "Пр. 2", "Пр. 3", "Пр. 4"]],
+    body: priorityBody,
+    styles: {
+      font: "Roboto",
+      fontSize: 10,
+      halign: "center",
+    },
+    headStyles: {
+      fillColor: [44, 62, 80],
+      font: "Roboto",
+    },
+    columnStyles: {
+      0: { halign: "left", fontStyle: "bold" as const },
+    },
+  });
+
+  // @ts-ignore
+  currentY = doc.lastAutoTable.finalY + 15;
+
+  // 7. Пересечения
   if (intersections) {
     if (currentY + 60 > 280) {
       doc.addPage();
@@ -224,7 +286,7 @@ export async function generateReport({ stats, applicants, intersections, chartEl
     currentY = doc.lastAutoTable.finalY + 15;
   }
 
-  // 7. Списки зачисленных
+  // 8. Списки зачисленных
   const admitted = applicants.filter(a => a.current_program);
   const programs = ["ПМ", "ИВТ", "ИТСС", "ИБ"];
 
